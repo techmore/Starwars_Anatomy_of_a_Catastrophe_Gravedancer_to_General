@@ -1,20 +1,18 @@
-"""Visual prompt generation for DrawThings + Flux.2 Klein 4b and Wan 2.2."""
+"""Visual prompt generation for Draw Things + Flux.2 Klein 4b and Wan 2.2."""
 
 import json
 import re
 from typing import Dict, Any, List, Optional
 from src.prompts.system_prompts import (
     VISUAL_PROMPT_SYSTEM_PROMPT,
-    IMAGE_PROMPT_TEMPLATE,
-    VIDEO_PROMPT_TEMPLATE,
     NEGATIVE_PROMPT_DEFAULT
 )
-from src.utils.ollama_client import OllamaClient
+from src.utils.mlx_client import MLXClient
 
 
 class PromptGenerator:
-    def __init__(self, ollama_client: OllamaClient):
-        self.ollama = ollama_client
+    def __init__(self, mlx_client: MLXClient):
+        self.mlx = mlx_client
     
     def extract_scenes(
         self,
@@ -159,7 +157,7 @@ Focus on cinematic Star Wars aesthetic. Gravedancer visual: Kaleesh warrior, bon
         prompt = self.build_scene_prompt(scene_text, day_number, aspect_ratio)
         system = system_prompt or VISUAL_PROMPT_SYSTEM_PROMPT
         
-        response = self.ollama.generate(
+        response = self.mlx.generate(
             model=model,
             prompt=prompt,
             system=system,

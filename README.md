@@ -1,6 +1,6 @@
 # Gravedancer to General: Anatomy of a Catastrophe
 
-A local Streamlit web application for creating and managing episodes of a Star Wars fan series chronicling Qymaen jai Sheelal's evolution into General Grievous. Generate stories with **Ollama**, then create visual pipelines for **DrawThings** (Flux.2 Klein 4b images + Wan 2.2 High Noise 6-bit SVDQuant video).
+A local, Mac-first creator console for building episodes of a Star Wars fan series chronicling Qymaen jai Sheelal's evolution into General Grievous. Generate stories with **MLX** on Apple Silicon, then build visual workflows for **Draw Things** using **Flux.2 Klein 4b** for stills and **Wan 2.2 High Noise 6-bit SVDQuant** for video prep.
 
 ## Features
 
@@ -8,15 +8,17 @@ A local Streamlit web application for creating and managing episodes of a Star W
 - **Story Viewer/Editor**: Review, edit, and parse generated stories
 - **Scene Prompts**: Auto-extract key scenes and generate image/video prompts
 - **Episode Library**: Manage and export your entire series
-- **DrawThings Integration**: Optimized prompts for Flux.2 Klein 4b and Wan 2.2
+- **Draw Things Integration**: Optimized prompts for Flux.2 Klein 4b and Wan 2.2
+- **Local-first workflow**: Works offline after MLX and Draw Things are available
+- **Mac-first UI direction**: Streamlit is the current prototype shell, not a commitment to the final UI
 
 ## Setup
 
 ### Prerequisites
 
 1. **Python 3.9+**
-2. **Ollama** running locally ([install](https://ollama.com/))
-3. **DrawThings** app for image/video generation
+2. **MLX** Python runtime with `mlx_lm`
+3. **Draw Things** app for image/video generation on macOS
 
 ### Installation
 
@@ -32,46 +34,37 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-### Pull an Ollama Model
+### Prepare the MLX Model
 
-**Default: `qwen3.6:27b-mlx` (Apple Silicon optimized):**
+**Default: `mlx-community/Qwen3.6-27B-4bit` (lighter Apple Silicon option):**
 ```bash
-ollama pull qwen3.6:27b-mlx   # ~18-20GB RAM — MLX/Metal accelerated for M-series Macs
+python -m mlx_lm.generate --model mlx-community/Qwen3.6-27B-4bit --prompt "Sanity check"
 ```
 
 **Other top-tier options:**
 ```bash
-ollama pull qwen3.6:27b       # ~18-20GB RAM — cross-platform version, excellent prose + structure
-ollama pull qwen2.5:32b       # ~20GB RAM — excellent prose, long context
-ollama pull llama3.1:70b      # ~40GB RAM — best in class
-ollama pull gemma2:27b        # ~16GB RAM — Google, strong instruction-following
-ollama pull command-r         # ~20GB RAM — Cohere, creative-tuned
+python -m mlx_lm.generate --model mlx-community/Qwen3.6-27B-4bit --prompt "Your creative writing prompt here"
 ```
 
 **Faster / lighter (still good):**
 ```bash
-ollama pull llama3.1          # ~4.7GB — solid default
-ollama pull gemma2            # ~5.4GB — fast, good prose
-ollama pull mixtral           # ~26GB — MoE, strong creative
+python -m mlx_lm.generate --model mlx-community/Qwen3.6-8B-4bit --prompt "Your creative writing prompt here"
 ```
 
-The app defaults to `qwen3.6:27b-mlx` and auto-detects installed models. MLX variants sort to the top of the model list. Models are labeled with quality indicators (★ best, ● good, ○ ok). The sidebar picks the best available model for you.
+The app defaults to `mlx-community/Qwen3.6-27B-4bit` and lets you edit the model path directly in the sidebar.
 
-### Start Ollama
-
-```bash
-ollama serve
-```
-
-### Run the App
+### Run the Prototype Shell
 
 ```bash
 streamlit run app.py
 ```
 
-The app will open at `http://localhost:8501`.
+This opens the current Streamlit prototype shell at `http://localhost:8501`.
+The core story, prompt, storage, and Draw Things modules are kept reusable so the presentation layer can be swapped later if a more Mac-native UI becomes the better fit.
 
 ## Workflow
+
+The app is organized as a modular prototype UI shell with separate tabs for story, art, prompts, viewer, and library.
 
 1. **Create Episode** (Tab 1)
    - Enter title, number of days, Jedi details, setting, tone
@@ -85,7 +78,7 @@ The app will open at `http://localhost:8501`.
 
 3. **Generate Visual Prompts** (Tab 3)
    - Extract key scenes from story
-   - Generate DrawThings + Flux.2 Klein 4b image prompts (5 variations per scene)
+   - Generate Draw Things + Flux.2 Klein 4b image prompts
    - Generate Wan 2.2 High Noise 6-bit SVDQuant video prompts
    - Export as JSON or TXT
 
@@ -93,11 +86,11 @@ The app will open at `http://localhost:8501`.
    - Browse all episodes
    - Export as Markdown, JSON, or prompts bundle
 
-## DrawThings Workflow
+## Draw Things Workflow
 
 ### Image Generation (Flux.2 Klein 4b)
 
-1. Open **DrawThings**
+1. Open **Draw Things**
 2. Load model: **Flux.2 Klein 4b**
 3. Set aspect ratio (16:9 = 1344x768 recommended)
 4. Settings:
@@ -109,7 +102,7 @@ The app will open at `http://localhost:8501`.
 
 ### Video Generation (Wan 2.2 High Noise 6-bit SVDQuant)
 
-1. Load **Wan 2.2 High Noise 6-bit SVDQuant** I2V model in DrawThings
+1. Load **Wan 2.2 High Noise 6-bit SVDQuant** I2V model in Draw Things
 2. Input: keyframe image from Flux.2 Klein 4b
 3. Paste Wan 2.2 motion prompt
 4. Settings:
@@ -132,10 +125,10 @@ gravedancer-to-general/
 ├── images/                # Generated images (create manually)
 ├── videos/                # Generated videos (create manually)
 ├── src/                   # Source code
-│   ├── components/        # Streamlit tab components
+│   ├── components/        # UI components and tabs
 │   ├── prompts/           # System prompts
-│   └── utils/             # Ollama client, storage, generators
-├── app.py                 # Main Streamlit app
+│   └── utils/             # MLX client, storage, generators, Draw Things client
+├── app.py                 # Main prototype UI entrypoint
 ├── requirements.txt
 └── README.md
 ```
@@ -143,20 +136,19 @@ gravedancer-to-general/
 ## Configuration
 
 All settings are in the sidebar:
-- **Ollama URL**: Default `http://localhost:11434`
-- **Model**: Select from installed Ollama models
+- **MLX Model**: Set the local MLX model path or repo ID
 - **Temperature**: Creativity slider (0.0-2.0)
 - **Storage Path**: Where episodes are saved
 - **System Prompts**: Edit the story generation and visual prompt system prompts
 
 ## Tech Stack
 
-- **Streamlit**: Web UI framework
-- **Ollama**: Local LLM inference
-- **DrawThings**: Image/video generation (external)
+- **Streamlit**: Current prototype UI shell only
+- **MLX / mlx_lm**: Local LLM inference on Apple Silicon
+- **Draw Things**: Image/video generation (external)
 - **Flux.2 Klein 4b**: Image generation model
 - **Wan 2.2 High Noise 6-bit SVDQuant**: Image-to-video model
-- **Python**: requests, pillow, pyyaml
+- **Python**: requests, streamlit
 
 ## Notes
 
@@ -165,6 +157,20 @@ All settings are in the sidebar:
 - Episode data is stored in `episodes/` folder
 - You can edit system prompts in the sidebar for fine-tuning
 - The app supports streaming generation for long stories
+- The current implementation is modular under `src/components/` and `src/utils/`
+- The UI is intentionally kept thin so the rendering layer can be replaced later if a more Mac-native shell becomes the better fit
+- The intended visual workflow is MLX -> Draw Things, not ComfyUI
+
+## Planning Docs
+
+- [`prompt.md`](prompt.md) - product brief and hard requirements
+- [`docs/INDEX.md`](docs/INDEX.md) - docs landing page
+- [`docs/consistency-plan.md`](docs/consistency-plan.md) - current alignment checklist
+- [`docs/mac-ui-architecture.md`](docs/mac-ui-architecture.md) - future UI boundaries
+- [`docs/ui-migration-checklist.md`](docs/ui-migration-checklist.md) - shell swap phases
+- [`docs/ui-migration-roadmap.md`](docs/ui-migration-roadmap.md) - implementation order
+- [`docs/REQUIREMENTS-TRACE.md`](docs/REQUIREMENTS-TRACE.md) - prompt-to-implementation trace
+- [`docs/PROJECT-STATUS.md`](docs/PROJECT-STATUS.md) - current handoff summary
 
 ## License
 

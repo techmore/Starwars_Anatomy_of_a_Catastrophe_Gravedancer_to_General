@@ -1,7 +1,7 @@
-"""Curated model recommendations for Ollama.
+"""Curated model recommendations for MLX.
 
 Each model has metadata about what it's best for, memory requirements, and quality tier.
-The app uses this to recommend models in the UI when Ollama models are detected.
+The app uses this to recommend models in the UI when MLX models are detected.
 """
 
 # Model metadata: name -> {display, quality, strengths, ram_gb, family}
@@ -14,6 +14,16 @@ MODEL_CATALOG = {
         "tier": 0,  # Top priority for Mac users
         "strengths": ["MLX/Metal accelerated", "Long-form prose", "Following complex structure"],
         "ram_gb": "~18-20",
+        "family": "qwen",
+        "story_pull": True,
+        "platform": "mac"
+    },
+    "mlx-community/Qwen3.6-27B-4bit": {
+        "display": "Qwen 3.6 27B 4-bit MLX (lighter Apple Silicon option)",
+        "quality": "best",
+        "tier": 0,
+        "strengths": ["MLX/Metal accelerated", "Lower memory footprint", "Long-form prose"],
+        "ram_gb": "~14-16",
         "family": "qwen",
         "story_pull": True,
         "platform": "mac"
@@ -114,6 +124,7 @@ MODEL_CATALOG = {
 # Picked for: long-form creative prose, instruction following, stable generation
 # MLX variants come first — they're optimized for Apple Silicon Macs
 STORY_RECOMMENDED = [
+    "mlx-community/Qwen3.6-27B-4bit",
     "qwen3.6:27b-mlx",
     "qwen3.6",
     "qwen2.5",
@@ -125,8 +136,8 @@ STORY_RECOMMENDED = [
     "mixtral"
 ]
 
-# Default model — qwen3.6:27b-mlx is the active download (Apple Silicon optimized)
-DEFAULT_MODEL = "qwen3.6:27b-mlx"
+# Default model — prefer the lighter 4-bit MLX build when available
+DEFAULT_MODEL = "mlx-community/Qwen3.6-27B-4bit"
 
 
 def get_model_info(installed_name: str) -> dict:
@@ -203,20 +214,23 @@ def format_model_label(installed_name: str) -> str:
 
 
 def get_install_commands() -> str:
-    """Generate install commands for recommended models."""
+    """Generate setup commands for recommended models."""
     return """\
-# DEFAULT — Apple Silicon optimized (MLX/Metal)
-ollama pull qwen3.6:27b-mlx      # ~18-20GB — MLX-accelerated for M-series Macs
+# DEFAULT — lighter Apple Silicon optimized (MLX/Metal)
+python -m mlx_lm.generate --model mlx-community/Qwen3.6-27B-4bit --prompt "Sanity check"  # ~14-16GB — lighter 4-bit MLX build for M-series Macs
+
+# Alternative MLX build
+python -m mlx_lm.generate --model qwen3.6:27b-mlx --prompt "Sanity check"      # ~18-20GB — MLX-accelerated for M-series Macs
 
 # Top tier (cross-platform)
-ollama pull qwen3.6:27b          # ~18-20GB — excellent prose + structure
-ollama pull qwen2.5:32b          # ~20GB, excellent prose
-ollama pull llama3.1:70b         # ~40GB, best in class
-ollama pull gemma2:27b           # ~16GB, Google, strong
-ollama pull command-r            # ~20GB, Cohere, creative-tuned
+python -m mlx_lm.generate --model qwen3.6:27b --prompt "Sanity check"          # ~18-20GB — excellent prose + structure
+python -m mlx_lm.generate --model qwen2.5:32b --prompt "Sanity check"          # ~20GB, excellent prose
+python -m mlx_lm.generate --model llama3.1:70b --prompt "Sanity check"         # ~40GB, best in class
+python -m mlx_lm.generate --model gemma2:27b --prompt "Sanity check"           # ~16GB, Google, strong
+python -m mlx_lm.generate --model command-r --prompt "Sanity check"            # ~20GB, Cohere, creative-tuned
 
 # Mid tier (faster, lighter)
-ollama pull llama3.1             # ~4.7GB, solid default
-ollama pull gemma2               # ~5.4GB, fast
-ollama pull mixtral              # ~26GB, MoE
+python -m mlx_lm.generate --model llama3.1 --prompt "Sanity check"             # ~4.7GB, solid default
+python -m mlx_lm.generate --model gemma2 --prompt "Sanity check"               # ~5.4GB, fast
+python -m mlx_lm.generate --model mixtral --prompt "Sanity check"              # ~26GB, MoE
 """

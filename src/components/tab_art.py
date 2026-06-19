@@ -14,7 +14,7 @@ from src.utils.session_state import get_episode_day_prompt_sets, get_episode_pro
 
 def render_art_stage(context):
     """Stage 2: Art prompts + keyframe generation."""
-    ollama = context.ollama
+    mlx = context.mlx
     dt_client = context.dt_client
     model = context.model
     temperature = context.temperature

@@ -1,8 +1,8 @@
-"""Sidebar: Ollama + Draw Things configuration, library, advanced settings."""
+"""Sidebar: MLX + Draw Things configuration, library, advanced settings."""
 
 import streamlit as st
 
-from src.utils.ollama_client import get_ollama_client
+from src.utils.mlx_client import get_mlx_client
 from src.utils.storage import get_storage
 from src.utils.models import (
     get_model_info, sort_models_for_ui, get_recommended_default,
@@ -12,16 +12,14 @@ from src.utils.concepts import get_used_jedi_names
 from src.utils.drawthings_client import get_drawthings_client, DEFAULT_DT_PORTS
 
 
-def _cached_ollama_status(ollama, ollama_url: str):
-    cache_key = f"ollama_status:{ollama_url}"
+def _cached_mlx_status(model_name: str):
+    cache_key = f"mlx_status:{model_name}"
     cached = st.session_state.get(cache_key)
     if cached is None:
         cached = {
-            "connected": ollama.check_connection(),
-            "models": [],
+            "connected": get_mlx_client(model_name).check_connection(),
+            "models": [model_name],
         }
-        if cached["connected"]:
-            cached["models"] = ollama.list_models()
         st.session_state[cache_key] = cached
     return cached
 
@@ -51,67 +49,33 @@ def _cached_drawthings_status(dt_client, dt_url: str):
 
 
 def render_sidebar():
-    """Render the sidebar. Returns (ollama, dt_client, model, temperature, storage)."""
+    """Render the sidebar. Returns (mlx, dt_client, model, temperature, storage)."""
     with st.sidebar:
         st.markdown("## ⚙️ Settings")
 
-        # ---------- Ollama ----------
-        st.markdown("**Ollama**")
-        ollama_url = st.text_input(
-            "URL",
-            value=st.session_state["ollama_url"],
-            key="ollama_url_input",
+        # ---------- MLX ----------
+        st.markdown("**MLX**")
+        model = st.text_input(
+            "Model",
+            value=st.session_state["model"],
+            key="model_input",
             label_visibility="collapsed",
+            help="Use a local MLX model path or Hugging Face repo ID, e.g. `mlx-community/Qwen3.6-27B-4bit`.",
         )
-        st.session_state["ollama_url"] = ollama_url
-        ollama = get_ollama_client(ollama_url)
+        st.session_state["model"] = model
+        mlx = get_mlx_client(model)
 
-        ollama_status = _cached_ollama_status(ollama, ollama_url)
-        if ollama_status["connected"]:
-            st.markdown('<span class="conn-badge conn-ok">✓ Connected</span>', unsafe_allow_html=True)
-            available_models = ollama_status["models"]
-
-            if available_models:
-                sorted_models = sort_models_for_ui(available_models)
-                display_labels = [format_model_label(m) for m in sorted_models]
-                label_to_model = dict(zip(display_labels, sorted_models))
-
-                current = st.session_state.get("model", "")
-                if current in sorted_models:
-                    current_label = format_model_label(current)
-                else:
-                    recommended = get_recommended_default(available_models)
-                    current_label = format_model_label(recommended)
-                    st.session_state["model"] = recommended
-
-                try:
-                    current_index = display_labels.index(current_label)
-                except ValueError:
-                    current_index = 0
-
-                selected_label = st.selectbox(
-                    "Model",
-                    options=display_labels,
-                    index=current_index,
-                    key="model_select_display",
-                    label_visibility="collapsed",
-                    help="★ = best for long-form stories, ● = good, ○ = ok",
-                )
-                st.session_state["model"] = label_to_model[selected_label]
-                model = st.session_state["model"]
-
-                info = get_model_info(model)
-                with st.expander("Model info", expanded=False):
-                    st.caption(f"**Quality:** {info.get('quality', '?').title()}")
-                    st.caption(f"**RAM:** {info.get('ram_gb', '?')} GB")
-                    st.caption(f"**Strengths:** {', '.join(info.get('strengths', ['unknown']))}")
-            else:
-                st.warning("No models installed.")
-                with st.expander("Install a model", expanded=True):
-                    st.code(get_install_commands(), language="bash")
+        mlx_status = _cached_mlx_status(model)
+        if mlx_status["connected"]:
+            st.markdown('<span class="conn-badge conn-ok">✓ Ready</span>', unsafe_allow_html=True)
+            info = get_model_info(model)
+            with st.expander("Model info", expanded=False):
+                st.caption(f"**Quality:** {info.get('quality', '?').title()}")
+                st.caption(f"**RAM:** {info.get('ram_gb', '?')} GB")
+                st.caption(f"**Strengths:** {', '.join(info.get('strengths', ['unknown']))}")
         else:
-            st.markdown('<span class="conn-badge conn-bad">✗ Offline</span>', unsafe_allow_html=True)
-            st.caption("Start with `ollama serve`")
+            st.markdown('<span class="conn-badge conn-bad">✗ MLX unavailable</span>', unsafe_allow_html=True)
+            st.caption("Install `mlx_lm` and confirm the model path is available locally.")
             model = st.session_state.get("model", "")
 
         st.markdown("---")
@@ -236,7 +200,7 @@ def render_sidebar():
             )
             st.session_state["visual_sys_prompt"] = visual_sys
 
-    return ollama, dt_client, st.session_state["model"], st.session_state["temperature"], storage
+    return mlx, dt_client, st.session_state["model"], st.session_state["temperature"], storage
 
 
 def _try_switch(dt_client, hint: str) -> None:

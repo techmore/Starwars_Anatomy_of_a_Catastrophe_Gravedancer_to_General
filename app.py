@@ -9,9 +9,10 @@ from src.components.tab_prompts import render_prompts_tab
 from src.components.tab_viewer import render_viewer_tab
 from src.components.tab_library import render_library_tab
 from src.components.theme import CUSTOM_CSS
-from src.utils.prompt_generator import PromptGenerator
 from src.utils.app_context import AppContext
 from src.utils.session_state import init_session_state
+from src.utils.mlx_client import MLXClient
+from src.utils.prompt_generator import PromptGenerator
 from src.utils.story_generator import StoryGenerator
 
 def main():
@@ -25,15 +26,15 @@ def main():
 
     init_session_state(st)
 
-    ollama, dt_client, model, temperature, storage = render_sidebar()
+    mlx, dt_client, model, temperature, storage = render_sidebar()
     context = AppContext(
-        ollama=ollama,
+        mlx=mlx,
         dt_client=dt_client,
         model=model,
         temperature=temperature,
         storage=storage,
-        story_gen=StoryGenerator(ollama),
-        prompt_gen=PromptGenerator(ollama),
+        story_gen=StoryGenerator(mlx),
+        prompt_gen=PromptGenerator(mlx),
     )
 
     st.markdown("# Gravedancer to General")
@@ -53,7 +54,6 @@ def main():
     with tab_prompts:
         render_prompts_tab(
             context=context,
-            ollama_url=st.session_state["ollama_url"],
             visual_system_prompt=st.session_state["visual_sys_prompt"],
         )
 

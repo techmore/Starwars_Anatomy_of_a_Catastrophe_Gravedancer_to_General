@@ -10,7 +10,6 @@ from src.utils.storage import EpisodeStorage
 
 def render_prompts_tab(
     context,
-    ollama_url: str,
     visual_system_prompt: str
 ):
     """Render the scene prompts/visual pipeline tab."""

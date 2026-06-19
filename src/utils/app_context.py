@@ -7,7 +7,7 @@ from dataclasses import dataclass
 class AppContext:
     """Bundle the services and current settings used across tabs."""
 
-    ollama: object
+    mlx: object
     dt_client: object
     model: str
     temperature: float

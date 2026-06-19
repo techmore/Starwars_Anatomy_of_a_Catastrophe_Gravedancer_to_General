@@ -25,7 +25,7 @@ from src.utils.story_validator import validate_story, render_warnings
 
 def render_story_stage(context):
     """Stage 1: Story generation."""
-    ollama = context.ollama
+    mlx = context.mlx
     model = context.model
     temperature = context.temperature
     storage = context.storage
@@ -80,7 +80,7 @@ def render_story_stage(context):
 
     # === Randomize flow ===
     if randomize_clicked:
-        _run_concept_then_generate(ollama, model, storage)
+        _run_concept_then_generate(mlx, model, storage)
 
     # === Manual form ===
     if show_manual:
@@ -91,7 +91,7 @@ def render_story_stage(context):
     # === Generation step (auto-triggered) ===
     auto_gen = st.session_state.pop("auto_generate", False)
     if auto_gen:
-        _run_generation(ollama, model, temperature, storage, story_gen)
+        _run_generation(mlx, model, temperature, storage, story_gen)
 
     # === Current story display ===
     story = st.session_state.get("current_story", "")
@@ -99,7 +99,7 @@ def render_story_stage(context):
         _render_current_story(story, storage, story_gen, model, temperature)
 
 
-def _run_concept_then_generate(ollama, model, storage):
+def _run_concept_then_generate(mlx, model, storage):
     """Phase 1 of the one-click flow: generate concept, then hand off to generation."""
     with st.status("🎲 Generating episode concept...", expanded=True) as status_box:
         try:
@@ -110,7 +110,7 @@ def _run_concept_then_generate(ollama, model, storage):
             concept_preview = st.empty()
             progress.info("Streaming the concept draft...")
             concept_response = ""
-            for chunk in ollama.generate_stream(
+            for chunk in mlx.generate_stream(
                 model=model,
                 prompt=concept_prompt,
                 temperature=0.9,
@@ -176,7 +176,7 @@ def _render_manual_form():
         st.rerun()
 
 
-def _run_generation(ollama, model, temperature, storage, story_gen):
+def _run_generation(mlx, model, temperature, storage, story_gen):
     payload = build_episode_payload(st, model, temperature)
     context = payload["story_context"]
     title = context["title"]

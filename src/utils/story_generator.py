@@ -1,14 +1,14 @@
-"""Story generation logic using Ollama."""
+"""Story generation logic using MLX."""
 
 from typing import Dict, Any, Optional, List
 import re
 from src.prompts.system_prompts import STORY_GENERATION_SYSTEM_PROMPT
-from src.utils.ollama_client import OllamaClient
+from src.utils.mlx_client import MLXClient
 
 
 class StoryGenerator:
-    def __init__(self, ollama_client: OllamaClient):
-        self.ollama = ollama_client
+    def __init__(self, mlx_client: MLXClient):
+        self.mlx = mlx_client
     
     def build_prompt(
         self,
@@ -87,7 +87,7 @@ Begin with "## DAY 1:" and continue through "## DAY {num_days}:". """
         # Allow comfortable headroom: 3 days = 12k, 5 days = 14k, 8 days = 18k
         max_tokens = max(10000, 8000 + num_days * 1200)
         
-        return self.ollama.generate(
+        return self.mlx.generate(
             model=model,
             prompt=prompt,
             system=system,
@@ -116,7 +116,7 @@ Begin with "## DAY 1:" and continue through "## DAY {num_days}:". """
         # Sized for ~7,500 word novella target
         max_tokens = max(10000, 8000 + num_days * 1200)
         
-        yield from self.ollama.generate_stream(
+        yield from self.mlx.generate_stream(
             model=model,
             prompt=prompt,
             system=system,
@@ -166,7 +166,7 @@ Write a NEW Day {day_number} with a descriptive title. **Target: ~{7500 // num_d
         
         # Allow ~1.5x word target in tokens for a single day
         day_target_tokens = int((7500 // num_days) * 1.5)
-        new_day = self.ollama.generate(
+        new_day = self.mlx.generate(
             model=model,
             prompt=regen_prompt,
             system=system,

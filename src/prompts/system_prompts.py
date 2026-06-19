@@ -1,4 +1,4 @@
-"""System prompts for story generation and visual prompt creation - optimized for DrawThings + Ollama."""
+"""System prompts for story generation and visual prompt creation - optimized for MLX + Draw Things."""
 
 STORY_GENERATION_SYSTEM_PROMPT = """You are a master storyteller crafting episodes for "Gravedancer to General: Anatomy of a Catastrophe" — a Star Wars fan series chronicling the transformation of Qymaen jai Sheelal, the Kaleesh warlord known as the Gravedancer, into General Grievous, the feared Jedi hunter and Supreme Commander of the Droid Armies.
 
@@ -64,11 +64,11 @@ Each episode is a **self-contained novella** of approximately **7,500 words tota
 
 Do NOT pad. Every paragraph should advance plot, deepen character, or build atmosphere. The length should feel earned, not bloated. If you run short, ADD a scene, not adjectives."""
 
-VISUAL_PROMPT_SYSTEM_PROMPT = """You are an expert prompt engineer for AI image generation optimized for **DrawThings** running **Flux.2 Klein 4b** and video generation with **Wan 2.2 High Noise 6-bit SVDQuant**.
+VISUAL_PROMPT_SYSTEM_PROMPT = """You are an expert prompt engineer for AI image generation optimized for **Draw Things** running **Flux.2 Klein 4b** and video generation with **Wan 2.2 High Noise 6-bit SVDQuant**.
 
 Your task: Convert narrative scenes from "Gravedancer to General" into highly detailed, production-ready prompts optimized for this specific local workflow.
 
-GRIVEDANCER / EARLY GRIEVOUS VISUAL REFERENCE:
+GRAVEDANCER / EARLY GRIEVOUS VISUAL REFERENCE:
 - Species: Kaleesh (reptilian humanoid, reddish-brown scaled skin, four-fingered hands, digitigrade legs)
 - Mask: Traditional bone ancestral mask, weathered, carved with kill tally marks — NOT the full Grievous faceplate yet. Eyes visible through eye slits: golden/amber, predatory.
 - Cybernetics: Early augmentations — visible servos at joints, durasteel reinforcement on forearms, possibly one mechanical eye, neural interface ports at temples. Not fully robotic. Cape/robe: tattered warlord's cloak, Kaleesh war banners, practical armor weave.
@@ -114,61 +114,6 @@ Provide 3-5 variations per scene:
 4. DRAMATIC/LOW ANGLE: Hero/villain shot, power, menace
 5. ALTERNATE STYLE: Painterly, concept art, storyboard frame, noir
 
-Each prompt: Natural language paragraph (Flux T5 handles long prompts well). Include negative prompt suggestions for DrawThings."""
-
-IMAGE_PROMPT_TEMPLATE = """{scene_description}
-
-**Visual Keywords:** {visual_keywords}
-
-**DrawThings + Flux.2 Klein 4b Variations:**
-1. **Wide/Establishing:** {wide_prompt}
-2. **Medium/Action:** {medium_prompt}
-3. **Close-up/Detail:** {closeup_prompt}
-4. **Dramatic/Low Angle:** {dramatic_prompt}
-5. **Alternate Style:** {alternate_prompt}
-
-**Negative Prompt (DrawThings):** {negative_prompt}
-
-**DrawThings Settings (Flux.2 Klein 4b):**
-- Model: Flux.2 Klein 4b (fp8/bf16)
-- Aspect Ratio: {aspect_ratio}
-- Resolution: {resolution}
-- Steps: 20-30
-- CFG Scale: 1.5-3.5
-- Sampler: Euler a / DPM++ 2M
-- Seed: {seed}
-
-**Video Prompt (Wan 2.2 High Noise 6-bit SVDQuant I2V):**
-{video_prompt}
-
-**DrawThings Wan 2.2 Workflow:**
-- Load Wan 2.2 High Noise 6-bit SVDQuant I2V model
-- Input: Generated keyframe image + motion prompt below
-- Resolution: {video_resolution}
-- FPS: 24
-- Steps: 20-30
-- CFG: 6.0-8.0
-- Motion Bucket: {motion_bucket}
-- Seed: {video_seed}"""
-
-VIDEO_PROMPT_TEMPLATE = """**Keyframe Description:** {keyframe_description}
-
-**Motion Prompt:** {motion_description}
-
-**Camera Movement:** {camera_movement}
-
-**Duration:** {duration} seconds ({frame_count} frames at 24fps)
-
-**Wan 2.2 High Noise Prompt:**
-{wan_prompt}
-
-**DrawThings Wan 2.2 Settings:**
-- Model: Wan 2.2 High Noise 6-bit SVDQuant
-- Resolution: {video_resolution}
-- FPS: 24
-- Steps: 25
-- CFG: 7.0
-- Motion Bucket: {motion_bucket}
-- Seed: {video_seed}"""
+Each prompt: Natural language paragraph (Flux T5 handles long prompts well). Include negative prompt suggestions for Draw Things."""
 
 NEGATIVE_PROMPT_DEFAULT = "low quality, blurry, distorted, deformed, ugly, bad anatomy, extra limbs, missing limbs, floating limbs, disconnected limbs, mutation, mutated, poorly drawn face, poorly drawn hands, poorly drawn feet, malformed hands, malformed feet, extra fingers, fewer fingers, fused fingers, too many fingers, watermark, text, signature, username, logo, blurry background, oversaturated, underexposed, overexposed, cartoon, anime, sketch, drawing, illustration, 2d, flat, low resolution, pixelated, noise, grain, artifacts, jpeg artifacts, compression artifacts"
