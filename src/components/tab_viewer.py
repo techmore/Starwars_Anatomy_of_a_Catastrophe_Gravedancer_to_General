@@ -5,11 +5,14 @@ from src.utils.story_generator import StoryGenerator
 from src.utils.storage import EpisodeStorage
 
 
-def render_viewer_tab(
-    story_gen: StoryGenerator,
-    storage: EpisodeStorage
-):
+def _target_jedi_name(metadata):
+    return metadata.get("target_jedi_name") or metadata.get("jedi_name") or "Unknown"
+
+
+def render_viewer_tab(context):
     """Render the story viewer/editor tab."""
+    story_gen: StoryGenerator = context.story_gen
+    storage: EpisodeStorage = context.storage
     
     st.markdown("## Story Viewer & Editor")
     st.markdown('<div class="blood-accent">Review the hunt. Refine the prose. Reshape the narrative.</div>', unsafe_allow_html=True)
@@ -46,7 +49,7 @@ def render_viewer_tab(
     with stat_col3:
         st.metric("Reading Time", f"{stats['reading_time_minutes']} min")
     with stat_col4:
-        st.metric("Jedi Target", metadata.get("jedi_name", "Unknown"))
+        st.metric("Target Jedi", _target_jedi_name(metadata))
     
     st.markdown("---")
     
@@ -55,7 +58,7 @@ def render_viewer_tab(
         meta_col1, meta_col2 = st.columns(2)
         with meta_col1:
             st.markdown(f"**Title:** {metadata.get('title', 'N/A')}")
-            st.markdown(f"**Jedi:** {metadata.get('jedi_name', 'N/A')}")
+            st.markdown(f"**Target Jedi:** {_target_jedi_name(metadata)}")
             st.markdown(f"**Species:** {metadata.get('jedi_species', 'N/A')}")
             st.markdown(f"**Rank:** {metadata.get('jedi_rank', 'N/A')}")
         with meta_col2:

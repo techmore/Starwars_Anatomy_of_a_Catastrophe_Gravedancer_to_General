@@ -1,4 +1,4 @@
-"""Tab 3: Scene Prompts & Visual Pipeline for DrawThings + Flux.2 Klein 4b + Wan 2.2."""
+"""Tab 3: Scene Prompts & Visual Pipeline for Draw Things + Flux.2 Klein 4b + Wan 2.2."""
 
 import streamlit as st
 import json
@@ -9,18 +9,19 @@ from src.utils.storage import EpisodeStorage
 
 
 def render_prompts_tab(
-    prompt_gen: PromptGenerator,
-    story_gen: StoryGenerator,
-    storage: EpisodeStorage,
-    model: str,
-    temperature: float,
+    context,
     ollama_url: str,
     visual_system_prompt: str
 ):
     """Render the scene prompts/visual pipeline tab."""
+    prompt_gen: PromptGenerator = context.prompt_gen
+    story_gen: StoryGenerator = context.story_gen
+    storage: EpisodeStorage = context.storage
+    model: str = context.model
+    temperature: float = context.temperature
     
     st.markdown("## Scene Prompts & Visual Pipeline")
-    st.markdown('<div class="blood-accent">Extract key scenes. Generate DrawThings + Flux.2 Klein 4b image prompts. Generate Wan 2.2 High Noise 6-bit SVDQuant video prompts.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="blood-accent">Extract key scenes. Generate Draw Things + Flux.2 Klein 4b image prompts. Generate Wan 2.2 High Noise 6-bit SVDQuant video prompts.</div>', unsafe_allow_html=True)
     
     # Load episode
     episodes = storage.list_episodes()
@@ -168,7 +169,7 @@ def render_prompts_tab(
             st.markdown(f"```\n{result.get('scene_text', '')}\n```")
             
             # Image prompts
-            st.markdown("### DrawThings + Flux.2 Klein 4b Image Prompts")
+            st.markdown("### Draw Things + Flux.2 Klein 4b Image Prompts")
             
             img_tabs = st.tabs(["Wide", "Medium", "Close-up", "Dramatic", "Alternate"])
             
@@ -188,11 +189,11 @@ def render_prompts_tab(
                 st.markdown("**Alternate Style**")
                 st.code(result.get("alternate", ""), language="text")
             
-            st.markdown("**Negative Prompt (DrawThings):**")
+            st.markdown("**Negative Prompt (Draw Things):**")
             st.code(result.get("negative_prompt", ""), language="text")
             
             if result.get("drawthings_settings"):
-                st.markdown("**DrawThings Settings (Flux.2 Klein 4b):**")
+                st.markdown("**Draw Things Settings (Flux.2 Klein 4b):**")
                 st.code(result.get("drawthings_settings", ""), language="text")
             
             st.markdown("---")
@@ -217,21 +218,21 @@ def render_prompts_tab(
                 st.code(result.get("video_wan_prompt", ""), language="text")
             
             if result.get("video_settings"):
-                st.markdown("**DrawThings Wan 2.2 Settings:**")
+                st.markdown("**Draw Things Wan 2.2 Settings:**")
                 st.code(result.get("video_settings", ""), language="text")
             
             # Raw response
             with st.expander("Raw LLM Response"):
                 st.text(result.get("raw_response", ""))
     
-    # DrawThings workflow notes
+    # Draw Things workflow notes
     st.markdown("---")
-    with st.expander("DrawThings + Flux.2 Klein 4b + Wan 2.2 Workflow Notes", expanded=False):
+    with st.expander("Draw Things + Flux.2 Klein 4b + Wan 2.2 Workflow Notes", expanded=False):
         st.markdown("""
-### DrawThings Setup
+### Draw Things Setup
 
 **Model 1: Flux.2 Klein 4b (Image Generation)**
-1. Open DrawThings app
+1. Open Draw Things app
 2. Load model: `flux.2-klein-4b` (fp8 or bf16 variant)
 3. Set aspect ratio (16:9 = 1344x768 recommended for cinematic)
 4. Steps: 20-30
@@ -241,7 +242,7 @@ def render_prompts_tab(
 8. Save keyframe for Wan 2.2 I2V
 
 **Model 2: Wan 2.2 High Noise 6-bit SVDQuant (Image-to-Video)**
-1. Load Wan 2.2 High Noise 6-bit SVDQuant I2V model in DrawThings
+1. Load Wan 2.2 High Noise 6-bit SVDQuant I2V model in Draw Things
 2. Use the keyframe image from Flux.2 Klein 4b as input
 3. Paste the Wan 2.2 motion prompt
 4. Set resolution: 480x832 (portrait) or 832x480 (landscape)

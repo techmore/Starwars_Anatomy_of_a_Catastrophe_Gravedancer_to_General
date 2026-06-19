@@ -5,8 +5,13 @@ import json
 from src.utils.storage import EpisodeStorage
 
 
-def render_library_tab(storage: EpisodeStorage):
+def _target_jedi_name(ep):
+    return ep.get("target_jedi_name") or ep.get("jedi_name") or "Unknown"
+
+
+def render_library_tab(context):
     """Render the episode library/export tab."""
+    storage: EpisodeStorage = context.storage
     
     st.markdown("## Episode Library & Export")
     st.markdown('<div class="blood-accent">Your archive of hunts. Export. Share. Continue the legacy.</div>', unsafe_allow_html=True)
@@ -25,7 +30,7 @@ def render_library_tab(storage: EpisodeStorage):
         total_days = sum(ep.get("num_days", 0) for ep in episodes)
         st.metric("Total Days", total_days)
     with stat_col3:
-        unique_jedi = len(set(ep.get("jedi_name", "Unknown") for ep in episodes))
+        unique_jedi = len(set(_target_jedi_name(ep) for ep in episodes))
         st.metric("Unique Jedi", unique_jedi)
     
     st.markdown("---")
@@ -48,7 +53,7 @@ def render_library_tab(storage: EpisodeStorage):
         filtered = [
             ep for ep in filtered
             if search_lower in ep.get("title", "").lower()
-            or search_lower in ep.get("jedi_name", "").lower()
+            or search_lower in _target_jedi_name(ep).lower()
         ]
     
     if sort_by == "Newest first":
@@ -73,7 +78,7 @@ def render_library_tab(storage: EpisodeStorage):
                 with col:
                     with st.container():
                         st.markdown(f"### {ep.get('title', 'Untitled')}")
-                        st.markdown(f"**Jedi:** {ep.get('jedi_name', 'Unknown')}")
+                        st.markdown(f"**Target Jedi:** {_target_jedi_name(ep)}")
                         st.markdown(f"**Setting:** {ep.get('setting', 'Unknown')}")
                         st.markdown(f"**Days:** {ep.get('num_days', 'N/A')}")
                         st.markdown(f"*Created: {ep.get('created_at', '')[:10]}*")
@@ -111,7 +116,7 @@ def render_library_tab(storage: EpisodeStorage):
     
     if "library_export" in st.session_state:
         ep_id = st.session_state["library_export"]
-        episode = storage.load_episode(ep_id)
+        episode = storage.export_episode_bundle(ep_id)
         
         if episode:
             st.markdown("---")
@@ -156,6 +161,19 @@ def render_library_tab(storage: EpisodeStorage):
                     )
                 else:
                     st.info("No prompts saved.")
+
+            st.markdown("### Archive")
+            archive_bytes = storage.build_episode_archive_bytes(ep_id)
+            if archive_bytes:
+                st.download_button(
+                    "Download Archive (.zip)",
+                    data=archive_bytes,
+                    file_name=f"{ep_id}_bundle.zip",
+                    mime="application/zip",
+                    key=f"dl_zip_{ep_id}",
+                )
+            else:
+                st.info("Archive unavailable.")
             
             if st.button("Close Export Panel"):
                 del st.session_state["library_export"]
