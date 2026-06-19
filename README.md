@@ -34,13 +34,14 @@ pip install -r requirements.txt
 
 ### Pull an Ollama Model
 
-**Default: `qwen3.6:27b` (recommended for 7,500-word novellas):**
+**Default: `qwen3.6:27b-mlx` (Apple Silicon optimized):**
 ```bash
-ollama pull qwen3.6:27b       # ~18-20GB RAM — excellent prose + structure following
+ollama pull qwen3.6:27b-mlx   # ~18-20GB RAM — MLX/Metal accelerated for M-series Macs
 ```
 
 **Other top-tier options:**
 ```bash
+ollama pull qwen3.6:27b       # ~18-20GB RAM — cross-platform version, excellent prose + structure
 ollama pull qwen2.5:32b       # ~20GB RAM — excellent prose, long context
 ollama pull llama3.1:70b      # ~40GB RAM — best in class
 ollama pull gemma2:27b        # ~16GB RAM — Google, strong instruction-following
@@ -54,7 +55,7 @@ ollama pull gemma2            # ~5.4GB — fast, good prose
 ollama pull mixtral           # ~26GB — MoE, strong creative
 ```
 
-The app defaults to `qwen3.6:27b` and auto-detects installed models. Models are sorted by story-friendliness and labeled with quality indicators (★ best, ● good, ○ ok). The sidebar picks the best available model for you.
+The app defaults to `qwen3.6:27b-mlx` and auto-detects installed models. MLX variants sort to the top of the model list. Models are labeled with quality indicators (★ best, ● good, ○ ok). The sidebar picks the best available model for you.
 
 ### Start Ollama
 

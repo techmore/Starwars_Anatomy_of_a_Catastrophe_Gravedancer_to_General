@@ -8,8 +8,18 @@ The app uses this to recommend models in the UI when Ollama models are detected.
 # Names use prefix-matching to match any tag (e.g., "llama3.1" matches "llama3.1:8b")
 MODEL_CATALOG = {
     # Top tier - best for long-form creative writing
+    "qwen3.6:27b-mlx": {
+        "display": "Qwen 3.6 27B MLX (Apple Silicon optimized) — DEFAULT",
+        "quality": "best",
+        "tier": 0,  # Top priority for Mac users
+        "strengths": ["MLX/Metal accelerated", "Long-form prose", "Following complex structure"],
+        "ram_gb": "~18-20",
+        "family": "qwen",
+        "story_pull": True,
+        "platform": "mac"
+    },
     "qwen3.6": {
-        "display": "Qwen 3.6 27B (excellent prose, long context) — DEFAULT",
+        "display": "Qwen 3.6 27B (excellent prose, long context)",
         "quality": "best",
         "tier": 1,
         "strengths": ["Long-form prose", "Following complex structure", "Atmospheric writing"],
@@ -102,7 +112,9 @@ MODEL_CATALOG = {
 
 # Recommended models for the "best for stories" default
 # Picked for: long-form creative prose, instruction following, stable generation
+# MLX variants come first — they're optimized for Apple Silicon Macs
 STORY_RECOMMENDED = [
+    "qwen3.6:27b-mlx",
     "qwen3.6",
     "qwen2.5",
     "llama3.1:70b",
@@ -113,8 +125,8 @@ STORY_RECOMMENDED = [
     "mixtral"
 ]
 
-# Default model — qwen3.6:27b is the active download
-DEFAULT_MODEL = "qwen3.6:27b"
+# Default model — qwen3.6:27b-mlx is the active download (Apple Silicon optimized)
+DEFAULT_MODEL = "qwen3.6:27b-mlx"
 
 
 def get_model_info(installed_name: str) -> dict:
@@ -193,8 +205,11 @@ def format_model_label(installed_name: str) -> str:
 def get_install_commands() -> str:
     """Generate install commands for recommended models."""
     return """\
-# Top tier (best for long-form creative writing)
-ollama pull qwen3.6:27b          # ~18-20GB — DEFAULT, excellent prose + structure
+# DEFAULT — Apple Silicon optimized (MLX/Metal)
+ollama pull qwen3.6:27b-mlx      # ~18-20GB — MLX-accelerated for M-series Macs
+
+# Top tier (cross-platform)
+ollama pull qwen3.6:27b          # ~18-20GB — excellent prose + structure
 ollama pull qwen2.5:32b          # ~20GB, excellent prose
 ollama pull llama3.1:70b         # ~40GB, best in class
 ollama pull gemma2:27b           # ~16GB, Google, strong
