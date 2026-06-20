@@ -4,11 +4,6 @@ import streamlit as st
 
 from src.utils.mlx_client import get_mlx_client
 from src.utils.storage import get_storage
-from src.utils.models import (
-    get_model_info, sort_models_for_ui, get_recommended_default,
-    format_model_label, get_install_commands,
-)
-from src.utils.concepts import get_used_jedi_names
 from src.utils.drawthings_client import get_drawthings_client, DEFAULT_DT_PORTS
 
 
@@ -57,26 +52,22 @@ def render_sidebar():
         st.markdown("**MLX**")
         model = st.text_input(
             "Model",
-            value=st.session_state["model"],
+            value=st.session_state["mlx_model"],
             key="model_input",
             label_visibility="collapsed",
             help="Use a local MLX model path or Hugging Face repo ID, e.g. `mlx-community/Qwen3.6-27B-4bit`.",
         )
-        st.session_state["model"] = model
+        st.session_state["mlx_model"] = model
         mlx = get_mlx_client(model)
 
         mlx_status = _cached_mlx_status(model)
         if mlx_status["connected"]:
             st.markdown('<span class="conn-badge conn-ok">✓ Ready</span>', unsafe_allow_html=True)
-            info = get_model_info(model)
-            with st.expander("Model info", expanded=False):
-                st.caption(f"**Quality:** {info.get('quality', '?').title()}")
-                st.caption(f"**RAM:** {info.get('ram_gb', '?')} GB")
-                st.caption(f"**Strengths:** {', '.join(info.get('strengths', ['unknown']))}")
+            st.caption("MLX is available and ready to generate text.")
         else:
             st.markdown('<span class="conn-badge conn-bad">✗ MLX unavailable</span>', unsafe_allow_html=True)
             st.caption("Install `mlx_lm` and confirm the model path is available locally.")
-            model = st.session_state.get("model", "")
+            model = st.session_state.get("mlx_model", "")
 
         st.markdown("---")
 
@@ -200,7 +191,7 @@ def render_sidebar():
             )
             st.session_state["visual_sys_prompt"] = visual_sys
 
-    return mlx, dt_client, st.session_state["model"], st.session_state["temperature"], storage
+    return mlx, dt_client, st.session_state["mlx_model"], st.session_state["temperature"], storage
 
 
 def _try_switch(dt_client, hint: str) -> None:

@@ -2,10 +2,43 @@
 
 import json
 import os
+import io
+import hashlib
+import zipfile
 from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Any, Optional
-import streamlit as st
+
+try:
+    import streamlit as st
+except ModuleNotFoundError:  # pragma: no cover - allows headless tests
+    class _StreamlitFallback:
+        @staticmethod
+        def cache_resource(func=None):
+            if func is None:
+                def decorator(inner):
+                    return inner
+                return decorator
+            return func
+
+    st = _StreamlitFallback()
+
+
+def _target_jedi_name(metadata: Dict[str, Any]) -> str:
+    """Return the canonical target Jedi name, preferring the new field."""
+    return str(metadata.get("target_jedi_name") or metadata.get("jedi_name") or "Unknown")
+
+
+def _normalize_metadata(metadata: Dict[str, Any]) -> Dict[str, Any]:
+    """Ensure both legacy and canonical target Jedi keys stay in sync."""
+    target = _target_jedi_name(metadata)
+    metadata["jedi_name"] = target
+    metadata["target_jedi_name"] = target
+    return metadata
+
+
+def _sha256_text(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
 class EpisodeStorage:
@@ -42,6 +75,7 @@ class EpisodeStorage:
         metadata["title"] = title
         metadata["created_at"] = datetime.now().isoformat()
         metadata["updated_at"] = datetime.now().isoformat()
+        _normalize_metadata(metadata)
         
         with open(ep_dir / "metadata.json", "w") as f:
             json.dump(metadata, f, indent=2)
@@ -51,7 +85,7 @@ class EpisodeStorage:
             f.write(f"# {title}\n\n")
             f.write(f"**Generated:** {metadata['created_at']}\n\n")
             f.write(f"**Days:** {metadata.get('num_days', 'N/A')}\n\n")
-            f.write(f"**Jedi Target:** {metadata.get('jedi_name', 'Unknown')}\n\n")
+            f.write(f"**Target Jedi:** {_target_jedi_name(metadata)}\n\n")
             f.write(f"**Setting:** {metadata.get('setting', 'Unknown')}\n\n")
             f.write("---\n\n")
             f.write(story)
@@ -78,6 +112,7 @@ class EpisodeStorage:
         
         with open(metadata_path, "r") as f:
             metadata = json.load(f)
+        _normalize_metadata(metadata)
         
         story = ""
         if story_path.exists():
@@ -94,6 +129,96 @@ class EpisodeStorage:
             "story": story,
             "prompts": prompts
         }
+
+    def export_episode_bundle(self, episode_id: str) -> Optional[Dict[str, Any]]:
+        """Return a canonical export bundle for an episode."""
+        episode = self.load_episode(episode_id)
+        if not episode:
+            return None
+
+        metadata = dict(episode["metadata"])
+        _normalize_metadata(metadata)
+        story = episode["story"]
+        prompts = episode.get("prompts")
+        files = {
+            "metadata_json": str(self.base_path / episode_id / "metadata.json"),
+            "story_md": str(self.base_path / episode_id / "story.md"),
+            "prompts_json": str(self.base_path / episode_id / "prompts.json"),
+        }
+        manifest_files = {}
+        for key, file_path in files.items():
+            path = Path(file_path)
+            exists = path.exists()
+            entry: Dict[str, Any] = {
+                "path": file_path,
+                "filename": path.name,
+                "exists": exists,
+                "size_bytes": path.stat().st_size if exists else 0,
+            }
+            if exists:
+                entry["sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
+            manifest_files[key] = entry
+
+        bundle_payload = {
+            "episode_id": episode_id,
+            "title": metadata.get("title", "Untitled"),
+            "setting": metadata.get("setting", "Unknown"),
+            "created_at": metadata.get("created_at", ""),
+            "num_days": metadata.get("num_days", 0),
+            "metadata": metadata,
+            "story": story,
+            "prompts": prompts,
+            "files": files,
+        }
+
+        bundle_payload["manifest"] = {
+            "episode_id": episode_id,
+            "generated_at": metadata.get("updated_at") or metadata.get("created_at", ""),
+            "bundle_json_sha256": _sha256_text(json.dumps(bundle_payload, sort_keys=True, indent=2)),
+            "files": manifest_files,
+        }
+
+        return bundle_payload
+
+    def write_episode_bundle(self, episode_id: str, filename: str = "bundle.json") -> Optional[str]:
+        """Write the canonical bundle to disk and return the file path."""
+        bundle = self.export_episode_bundle(episode_id)
+        if not bundle:
+            return None
+
+        ep_dir = self.base_path / episode_id
+        bundle_path = ep_dir / filename
+        with open(bundle_path, "w") as f:
+            json.dump(bundle, f, indent=2)
+        return str(bundle_path)
+
+    def write_episode_archive(self, episode_id: str, filename: str = "bundle.zip") -> Optional[str]:
+        """Write the episode bundle and source files to a zip archive."""
+        archive_bytes = self.build_episode_archive_bytes(episode_id)
+        if archive_bytes is None:
+            return None
+
+        ep_dir = self.base_path / episode_id
+        archive_path = ep_dir / filename
+        with open(archive_path, "wb") as f:
+            f.write(archive_bytes)
+        return str(archive_path)
+
+    def build_episode_archive_bytes(self, episode_id: str) -> Optional[bytes]:
+        """Build the episode archive as zip bytes."""
+        bundle = self.export_episode_bundle(episode_id)
+        if not bundle:
+            return None
+
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr("bundle.json", json.dumps(bundle, indent=2))
+            zf.writestr("manifest.json", json.dumps(bundle["manifest"], indent=2))
+            for key, file_path in bundle["files"].items():
+                path = Path(file_path)
+                if path.exists():
+                    zf.write(path, arcname=path.name)
+        return buf.getvalue()
     
     def list_episodes(self) -> List[Dict[str, Any]]:
         """List all episodes with metadata."""
@@ -109,7 +234,8 @@ class EpisodeStorage:
                         "title": metadata.get("title", "Untitled"),
                         "created_at": metadata.get("created_at", ""),
                         "num_days": metadata.get("num_days", 0),
-                        "jedi_name": metadata.get("jedi_name", "Unknown"),
+                        "jedi_name": _target_jedi_name(metadata),
+                        "target_jedi_name": _target_jedi_name(metadata),
                         "setting": metadata.get("setting", "Unknown")
                     })
         return episodes
@@ -130,38 +256,54 @@ class EpisodeStorage:
         metadata: Optional[Dict[str, Any]] = None,
         prompts: Optional[Dict[str, Any]] = None
     ) -> bool:
-        """Update an existing episode."""
+        """Update an existing episode.
+
+        Any argument left as None is left untouched. When rewriting the story
+        file we always read the current metadata as the header source so the
+        title/setting are preserved even when only ``story`` is supplied.
+        """
         ep_dir = self.base_path / episode_id
         if not ep_dir.exists():
             return False
-        
-        if metadata:
-            metadata_path = ep_dir / "metadata.json"
+
+        # Always load the current metadata so we can use it as a header source.
+        metadata_path = ep_dir / "metadata.json"
+        existing_metadata: Dict[str, Any] = {}
+        if metadata_path.exists():
             with open(metadata_path, "r") as f:
                 existing_metadata = json.load(f)
+
+        # Merge new metadata into existing (does NOT wipe other fields).
+        if metadata:
             existing_metadata.update(metadata)
+            incoming_target = metadata.get("target_jedi_name") or metadata.get("jedi_name")
+            if incoming_target:
+                existing_metadata["jedi_name"] = incoming_target
+                existing_metadata["target_jedi_name"] = incoming_target
+            _normalize_metadata(existing_metadata)
             existing_metadata["updated_at"] = datetime.now().isoformat()
             with open(metadata_path, "w") as f:
                 json.dump(existing_metadata, f, indent=2)
-        
+
+        # When rewriting the story, source the header from the merged metadata,
+        # not from a possibly-None metadata argument.
         if story:
             story_path = ep_dir / "story.md"
-            title = metadata.get("title") if metadata else "Untitled"
+            title = existing_metadata.get("title", "Untitled")
             with open(story_path, "w") as f:
                 f.write(f"# {title}\n\n")
-                meta = metadata or {}
-                f.write(f"**Generated:** {meta.get('created_at', datetime.now().isoformat())}\n\n")
-                f.write(f"**Days:** {meta.get('num_days', 'N/A')}\n\n")
-                f.write(f"**Jedi Target:** {meta.get('jedi_name', 'Unknown')}\n\n")
-                f.write(f"**Setting:** {meta.get('setting', 'Unknown')}\n\n")
+                f.write(f"**Generated:** {existing_metadata.get('created_at', datetime.now().isoformat())}\n\n")
+                f.write(f"**Days:** {existing_metadata.get('num_days', 'N/A')}\n\n")
+                f.write(f"**Target Jedi:** {_target_jedi_name(existing_metadata)}\n\n")
+                f.write(f"**Setting:** {existing_metadata.get('setting', 'Unknown')}\n\n")
                 f.write("---\n\n")
                 f.write(story)
-        
+
         if prompts is not None:
             prompts_path = ep_dir / "prompts.json"
             with open(prompts_path, "w") as f:
                 json.dump(prompts, f, indent=2)
-        
+
         return True
 
 

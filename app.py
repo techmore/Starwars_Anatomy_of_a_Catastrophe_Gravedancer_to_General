@@ -11,7 +11,6 @@ from src.components.tab_library import render_library_tab
 from src.components.theme import CUSTOM_CSS
 from src.utils.app_context import AppContext
 from src.utils.session_state import init_session_state
-from src.utils.mlx_client import MLXClient
 from src.utils.prompt_generator import PromptGenerator
 from src.utils.story_generator import StoryGenerator
 

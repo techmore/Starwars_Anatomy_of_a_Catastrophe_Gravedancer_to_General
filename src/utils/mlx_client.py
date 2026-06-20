@@ -1,9 +1,9 @@
 """MLX text generation client for local Apple Silicon inference."""
 
-import shutil
+import importlib.util
 import subprocess
 import sys
-from typing import Optional, List, Dict, Any, Iterable
+from typing import Optional, List, Iterable
 
 try:
     import streamlit as st
@@ -28,10 +28,10 @@ class MLXClient:
     def __init__(self, model: str = "mlx-community/Qwen3.6-27B-4bit"):
         self.model = model
 
-    def _mlx_command(self, prompt: str, system: Optional[str] = None, max_tokens: int = 4096, temperature: float = 0.7) -> List[str]:
-        if shutil.which("python") is None and shutil.which("python3") is None:
-            raise RuntimeError("Python is required to run mlx_lm.generate.")
+    def _has_python_api(self) -> bool:
+        return importlib.util.find_spec("mlx_lm") is not None
 
+    def _mlx_command(self, prompt: str, system: Optional[str] = None, max_tokens: int = 4096, temperature: float = 0.7) -> List[str]:
         cmd = [
             sys.executable,
             "-m",
@@ -40,21 +40,20 @@ class MLXClient:
             self.model,
             "--prompt",
             prompt,
+            "--max-tokens",
+            str(max_tokens),
+            "--temperature",
+            str(temperature),
         ]
         if system:
             cmd.extend(["--system", system])
-        cmd.extend(["--max-tokens", str(max_tokens), "--temperature", str(temperature)])
         return cmd
 
     def list_models(self) -> List[str]:
         return [self.model]
 
     def check_connection(self) -> bool:
-        try:
-            import importlib.util
-            return importlib.util.find_spec("mlx_lm") is not None
-        except Exception:
-            return False
+        return self._has_python_api()
 
     def generate(
         self,
@@ -79,6 +78,22 @@ class MLXClient:
         max_tokens: int = 4096,
     ) -> Iterable[str]:
         try:
+            if self._has_python_api():
+                from mlx_lm import generate as mlx_generate
+
+                response = mlx_generate(
+                    self.model,
+                    prompt=prompt,
+                    system=system,
+                    temp=temperature,
+                    max_tokens=max_tokens,
+                )
+                if isinstance(response, str):
+                    yield response
+                else:
+                    yield str(response)
+                return
+
             cmd = self._mlx_command(prompt, system=system, max_tokens=max_tokens, temperature=temperature)
             proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
             assert proc.stdout is not None
