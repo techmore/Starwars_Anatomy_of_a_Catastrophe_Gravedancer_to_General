@@ -54,6 +54,3 @@ class TestDrawThingsClient(unittest.TestCase):
         self.assertTrue(out["fallback"])
         self.assertIn("No video bytes", out["info"])
 
-
-if __name__ == "__main__":
-    unittest.main()

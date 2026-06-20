@@ -1,6 +1,10 @@
 """Main prototype UI entrypoint for Gravedancer to General."""
 
 import streamlit as st
+from src.utils.logging_utils import get_logger
+
+
+LOGGER = get_logger(__name__)
 
 def main():
     from src.components.sidebar import render_sidebar
@@ -9,7 +13,8 @@ def main():
     from src.components.tab_prompts import render_prompts_tab
     from src.components.tab_viewer import render_viewer_tab
     from src.components.tab_library import render_library_tab
-    from src.components.theme import CUSTOM_CSS
+    from src.components.theme import CUSTOM_CSS, FONTS_LINK
+    from src.components.ui import inject_ui_assets
     from src.utils.app_context import AppContext
     from src.utils.session_state import init_session_state
     from src.utils.prompt_generator import PromptGenerator
@@ -21,9 +26,18 @@ def main():
         layout="wide",
         initial_sidebar_state="expanded",
     )
+    LOGGER.info("App boot starting")
+    st.markdown(FONTS_LINK, unsafe_allow_html=True)
     st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
+    inject_ui_assets()
 
     init_session_state(st)
+    LOGGER.info(
+        "session initialized mlx_model=%s storage_path=%s temperature=%.2f",
+        st.session_state.get("mlx_model"),
+        st.session_state.get("storage_path"),
+        st.session_state.get("temperature"),
+    )
 
     mlx, dt_client, model, temperature, storage = render_sidebar()
     context = AppContext(

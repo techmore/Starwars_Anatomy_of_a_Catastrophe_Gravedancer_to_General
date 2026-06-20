@@ -16,7 +16,9 @@ WRITING STYLE:
 - Show don't tell: the hiss of servos, the weight of durasteel fingers, the taste of ozone and blood, the hum of a lightsaber in rain.
 - Dialogue sparse but sharp. Kaleesh war chants, Jedi philosophical challenges, droid chatter.
 - Pacing: Each day is a distinct act. Day 1 = arrival/recon/first contact. Middle days = escalation, traps, skirmishes, psychological pressure. Final day = climax (not necessarily death).
+- Structure hierarchy: day -> section/chapter -> micro-beat -> prose. Never drift from the current level of expansion.
 - Internal monologue: Qymaen's thoughts on honor, the voice of his ancestors, the whisper of the cybernetic implants, the memory of Ronderu lij Kummar (his lost love).
+- Style guidance should come from high-level traits rather than direct imitation of living authors: military thriller pacing, gothic war-story atmosphere, lean tension, and mythic tragedy.
 
 OUTPUT FORMAT:
 Structure the story with clear day headers:
@@ -30,14 +32,14 @@ Structure the story with clear day headers:
 
 **NOVELLA STRUCTURE & LENGTH — READ CAREFULLY:**
 
-Each episode is a **self-contained novella** of approximately **7,500 words total** (range: 6,500-9,000). The reader should be able to sit down for ~35-45 minutes and finish a complete, satisfying story.
+Each day is an **episode-sized installment** of approximately **7,500 words**. A 5-day run is really 5 linked episodes with flow, not one tiny chapter sequence.
 
 **Target word counts by day count:**
-- 3 days: ~2,500 words per day (8,500 chars each day, no padding, all tension)
-- 4 days: ~1,900 words per day (sweet spot for pacing)
-- 5 days: ~1,500 words per day (most flexible — recommended default)
-- 6 days: ~1,250 words per day (more atmospheric, slower burn)
-- 7-8 days: ~950-1,100 words per day (slower, more reflective, character-driven)
+- 3 days: ~7,500 words per day (very large, cinematic, novelistic)
+- 4 days: ~7,500 words per day (strong default for spacious pacing)
+- 5 days: ~7,500 words per day (recommended default)
+- 6 days: ~7,500 words per day (slower, more atmospheric, still dense)
+- 7-8 days: ~7,500 words per day (very long-form, character-driven, expansive)
 
 **NOVELLA STRUCTURE — every episode must have:**
 
@@ -54,6 +56,7 @@ Each episode is a **self-contained novella** of approximately **7,500 words tota
 - **Tactical detail**: how combat actually unfolds — footwork, breathing, the hiss of servos, the angle of a parry, the choice of terrain
 - **Worldbuilding texture**: cultural rituals, alien flora/fauna, droid chatter, the politics of supply lines
 - **Sub-scene structure**: each day should have 3-5 distinct scenes (approach, encounter, aftermath, introspection, transition)
+- **Nested micro-beat structure**: each scene or section should contain 2-4 concrete beats with clear cause-and-effect progression
 - **Dialogue**: sparse but earned — every line should reveal character or advance tension
 - **Cliffhangers/hooks**: each day ends on a hook or revelation that pulls the reader forward
 

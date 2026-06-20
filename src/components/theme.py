@@ -338,6 +338,15 @@ CUSTOM_CSS = """
     ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
     ::-webkit-scrollbar-thumb:hover { background: var(--olive-500); }
 
+    /* Pre blocks that should wrap instead of scroll */
+    pre.pre-wrap, .pre-wrap {
+        white-space: pre-wrap !important;
+        overflow-wrap: break-word !important;
+        word-break: break-word !important;
+        overflow-x: hidden !important;
+        max-width: 100%;
+    }
+
     /* Multiselect chips */
     .stMultiSelect [data-baseweb="tag"] {
         background: var(--olive-200) !important;
@@ -355,6 +364,30 @@ CUSTOM_CSS = """
         padding-bottom: 0.3em;
         margin-top: 1.5em;
         margin-bottom: 0.8em;
+    }
+
+    /* Story prose should wrap like a manuscript, not a log file. */
+    [data-testid="stMarkdownContainer"] p,
+    [data-testid="stMarkdownContainer"] li,
+    [data-testid="stMarkdownContainer"] blockquote,
+    [data-testid="stMarkdownContainer"] h1,
+    [data-testid="stMarkdownContainer"] h2,
+    [data-testid="stMarkdownContainer"] h3,
+    [data-testid="stMarkdownContainer"] h4,
+    [data-testid="stMarkdownContainer"] h5,
+    [data-testid="stMarkdownContainer"] h6 {
+        overflow-wrap: anywhere;
+        word-break: normal;
+        hyphens: auto;
+    }
+    [data-testid="stMarkdownContainer"] p {
+        white-space: normal;
+    }
+    [data-testid="stMarkdownContainer"] code,
+    [data-testid="stMarkdownContainer"] pre {
+        white-space: pre-wrap !important;
+        overflow-wrap: break-word !important;
+        word-break: break-word !important;
     }
 
     /* Star Wars accent (olive, not red — matches the palette) */
@@ -378,6 +411,141 @@ CUSTOM_CSS = """
     }
     .stage-active { background: var(--olive-800); }
     .stage-pending { background: var(--olive-400); color: var(--stone-700); }
+
+    /* ===== Pipeline timeline ===== */
+    .pipeline-timeline {
+        display: flex;
+        align-items: flex-start;
+        gap: 0;
+        flex-wrap: wrap;
+        margin: 0.5em 0 1em 0;
+        font-family: var(--font-body);
+    }
+    .pipeline-step {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        flex: 1;
+        min-width: 80px;
+        position: relative;
+    }
+    .pipeline-dot {
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.75rem;
+        font-weight: 700;
+        margin-bottom: 0.35em;
+        border: 2px solid var(--border);
+        background: var(--olive-100);
+        color: var(--stone-500);
+        transition: all 0.2s ease;
+        z-index: 1;
+    }
+    .pipeline-step.done .pipeline-dot {
+        background: var(--olive-600);
+        color: var(--olive-50);
+        border-color: var(--olive-600);
+    }
+    .pipeline-step.active .pipeline-dot {
+        background: var(--olive-800);
+        color: var(--olive-50);
+        border-color: var(--olive-700);
+        box-shadow: 0 0 0 4px color-mix(in oklch, var(--olive-500) 25%, transparent);
+        animation: pipeline-pulse 1.5s ease-in-out infinite;
+    }
+    .pipeline-step.error .pipeline-dot {
+        background: var(--red);
+        color: var(--olive-50);
+        border-color: var(--red);
+    }
+    @keyframes pipeline-pulse {
+        0%, 100% { box-shadow: 0 0 0 4px color-mix(in oklch, var(--olive-500) 25%, transparent); }
+        50% { box-shadow: 0 0 0 7px color-mix(in oklch, var(--olive-500) 12%, transparent); }
+    }
+    .pipeline-label {
+        font-size: 0.72rem;
+        font-weight: 500;
+        text-align: center;
+        line-height: 1.2;
+        color: var(--stone-600);
+    }
+    .pipeline-step.done .pipeline-label { color: var(--olive-800); }
+    .pipeline-step.active .pipeline-label { color: var(--olive-950); font-weight: 600; }
+    .pipeline-time {
+        font-size: 0.65rem;
+        font-weight: 400;
+        text-align: center;
+        color: var(--stone-400);
+        margin-top: 0.15em;
+        line-height: 1;
+        font-variant-numeric: tabular-nums;
+    }
+    .pipeline-step.done .pipeline-time { color: var(--olive-600); font-weight: 500; }
+    .pipeline-step.active .pipeline-time { color: var(--olive-800); font-weight: 500; }
+    .pipeline-connector {
+        flex: 0 0 20px;
+        height: 28px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-top: 0;
+    }
+    .pipeline-connector-line {
+        width: 100%;
+        height: 2px;
+        background: var(--border);
+    }
+    .pipeline-step.done + .pipeline-connector .pipeline-connector-line {
+        background: var(--olive-500);
+    }
+    .pipeline-dur {
+        font-size: 0.7rem;
+        font-weight: 600;
+        line-height: 1.2;
+    }
+    .pipeline-step.done .pipeline-dur { color: var(--olive-700); }
+    .pipeline-step.active .pipeline-dur { color: var(--olive-900); }
+    .pipeline-clock {
+        font-size: 0.55rem;
+        font-weight: 400;
+        line-height: 1.1;
+        opacity: 0.7;
+        margin-top: 0.1em;
+        font-variant-numeric: tabular-nums;
+    }
+    .pipeline-step.done .pipeline-clock { color: var(--olive-500); }
+    .pipeline-step.active .pipeline-clock { color: var(--olive-600); }
+    .pipeline-timeline-wrapper {
+        margin: 0.5em 0;
+    }
+    .pipeline-summary {
+        display: flex;
+        justify-content: center;
+        gap: 1.5em;
+        margin-top: 0.6em;
+        padding-top: 0.5em;
+        border-top: 1px solid var(--border);
+        font-size: 0.72rem;
+        font-family: var(--font-body);
+        font-variant-numeric: tabular-nums;
+    }
+    .pipeline-summary-item {
+        display: inline-flex;
+        align-items: baseline;
+        gap: 0.35em;
+    }
+    .pipeline-summary-label {
+        color: var(--stone-400);
+        font-weight: 400;
+    }
+    .pipeline-summary-value {
+        color: var(--olive-700);
+        font-weight: 600;
+    }
 
     /* Quick start / hero banner */
     .quick-start {

@@ -9,19 +9,25 @@ import streamlit as st
 
 from src.components.ui import copy_button, aspect_to_dims
 from src.prompts.system_prompts import NEGATIVE_PROMPT_DEFAULT
-from src.utils.session_state import get_episode_day_prompt_sets, get_episode_prompt_sets, save_day_prompt_sets
+from src.utils.session_state import (
+    get_episode_day_prompt_sets,
+    get_episode_prompt_sets,
+    render_episode_prompt_archive_summary,
+    save_day_prompt_sets,
+)
+from src.utils.logging_utils import start_new_run_log
 
 
 def render_art_stage(context):
     """Stage 2: Art prompts + keyframe generation."""
     mlx = context.mlx
     dt_client = context.dt_client
-    model = context.model
+    model = context.mlx_model
     temperature = context.temperature
     storage = context.storage
     prompt_gen = context.prompt_gen
     story_gen = context.story_gen
-    st.markdown("# 🎨 Art")
+    st.markdown("## 🎨 Art")
     st.markdown("Generate image prompts for each day, then render keyframes via Draw Things + Flux.2 Klein 4b.")
     st.markdown("---")
 
@@ -53,6 +59,14 @@ def render_art_stage(context):
     with col3:
         cfg = st.slider("CFG", min_value=1.0, max_value=8.0, value=2.5, step=0.1, key="art_cfg")
 
+    save_mode = st.radio(
+        "When saving day prompts",
+        ["Replace matching days", "Append as alternates"],
+        index=0,
+        key="art_save_mode",
+        horizontal=True,
+    )
+
     dt_ok = dt_client.check_connection()
     if not dt_ok:
         st.warning("Draw Things offline — you can still generate text prompts; keyframe rendering will be unavailable.")
@@ -67,11 +81,13 @@ def render_art_stage(context):
     st.markdown("## Generate Art for Each Day")
 
     existing_prompts = get_episode_prompt_sets(episode)
+    prompt_summary = render_episode_prompt_archive_summary(st, episode)
 
-    for day in days:
+    for idx, day in enumerate(days):
         day_num = day["number"]
         day_title = day["title"]
         day_content = day["content"]
+        day_key = f"{ep_id}_{idx}_{day_num}"
 
         with st.expander(f"Day {day_num}: {day_title}", expanded=False):
             st.markdown(f"```\n{day_content[:300]}...\n```")
@@ -82,24 +98,28 @@ def render_art_stage(context):
             if have_prompts:
                 st.markdown(f"**✓ {len(day_prompts)} prompt set(s) already generated**")
                 for prompt_set in day_prompts:
-                    _render_prompt_set(prompt_set, dt_client, dt_ok, storage, ep_id, day_num, aspect_ratio, steps, cfg)
+                    _render_prompt_set(prompt_set, dt_client, dt_ok, storage, ep_id, day_num, aspect_ratio, steps, cfg, day_key)
             else:
-                if st.button(f"Generate Prompts — Day {day_num}", key=f"gen_art_{day_num}", type="primary"):
+                if st.button(f"Generate Prompts — Day {day_num}", key=f"gen_art_{day_key}", type="primary"):
+                    st.session_state["log_run_path"] = str(start_new_run_log("art-prompts"))
                     _generate_day_prompts(
                         prompt_gen, storage, ep_id, existing_prompts,
                         day_num, day_content, model, aspect_ratio, temperature,
+                        replace=(save_mode == "Replace matching days"),
                     )
 
             # Regenerate button always available once we have a set.
             if have_prompts:
-                if st.button(f"🔄 Regenerate Day {day_num}", key=f"regen_art_{day_num}"):
+                if st.button(f"🔄 Regenerate Day {day_num}", key=f"regen_art_{day_key}"):
+                    st.session_state["log_run_path"] = str(start_new_run_log("art-regen"))
                     _regenerate_day_prompts(
                         prompt_gen, storage, ep_id, existing_prompts,
                         day_num, day_content, model, aspect_ratio, temperature,
+                        replace=(save_mode == "Replace matching days"),
                     )
 
 
-def _render_prompt_set(prompt_set, dt_client, dt_ok, storage, ep_id, day_num, aspect_ratio, steps, cfg):
+def _render_prompt_set(prompt_set, dt_client, dt_ok, storage, ep_id, day_num, aspect_ratio, steps, cfg, day_key):
     """Render one prompt set with copy buttons + optional keyframe generation."""
     label = prompt_set.get("prompt_type", "Flux.2 Klein 4b - DrawThings")
     st.markdown(f"**{label}**")
@@ -120,13 +140,13 @@ def _render_prompt_set(prompt_set, dt_client, dt_ok, storage, ep_id, day_num, as
         st.caption(f"**{vlabel}**")
         c_btn, _ = st.columns([1, 6])
         with c_btn:
-            copy_button(vtext, label="Copy", key=f"art_{day_num}_{vlabel[:4].lower()}")
+            copy_button(vtext, label="Copy", key=f"art_{day_key}_{vlabel[:4].lower()}")
         st.code(vtext, language="text")
 
     # Negative prompt + copy.
     if neg:
         st.caption("**Negative**")
-        copy_button(neg, label="Copy negative", key=f"art_{day_num}_neg")
+        copy_button(neg, label="Copy negative", key=f"art_{day_key}_neg")
         st.code(neg, language="text")
 
     # --- Keyframe rendering via Draw Things (Phase 3) ---
@@ -135,21 +155,22 @@ def _render_prompt_set(prompt_set, dt_client, dt_ok, storage, ep_id, day_num, as
     kf_prompt = st.selectbox(
         "Use prompt",
         [v[0] for v in variants if v[1]],
-        key=f"kf_sel_{day_num}",
+        key=f"kf_sel_{day_key}",
         label_visibility="collapsed",
     )
     chosen = next((v[1] for v in variants if v[0] == kf_prompt), "")
 
-    seed = st.number_input("Seed (-1 = random)", value=-1, step=1, key=f"kf_seed_{day_num}")
+    seed = st.number_input("Seed (-1 = random)", value=-1, step=1, key=f"kf_seed_{day_key}")
 
     can_render = dt_ok and bool(chosen)
     if st.button(
         f"🖼 Generate Keyframe — Day {day_num}",
-        key=f"kf_gen_{day_num}",
+        key=f"kf_gen_{day_key}",
         disabled=not can_render,
         type="primary",
         help=None if can_render else "Requires Draw Things connected + a prompt variant",
     ):
+        st.session_state["log_run_path"] = str(start_new_run_log("keyframe"))
         _render_keyframe(dt_client, storage, ep_id, day_num, chosen, neg, aspect_ratio, steps, cfg, int(seed))
 
 
@@ -180,20 +201,20 @@ def _render_keyframe(dt_client, storage, ep_id, day_num, prompt, negative, aspec
                 )
 
 
-def _generate_day_prompts(prompt_gen, storage, ep_id, existing_prompts, day_num, day_content, model, aspect_ratio, temperature):
+def _generate_day_prompts(prompt_gen, storage, ep_id, existing_prompts, day_num, day_content, model, aspect_ratio, temperature, replace: bool = False):
     with st.spinner(f"Generating prompts for Day {day_num}..."):
         try:
-            _save_day_prompts(prompt_gen, storage, ep_id, existing_prompts, day_num, day_content, model, aspect_ratio, temperature)
+            _save_day_prompts(prompt_gen, storage, ep_id, existing_prompts, day_num, day_content, model, aspect_ratio, temperature, replace=replace)
             st.success(f"Generated Day {day_num}")
             st.rerun()
         except Exception as e:
             st.error(f"Failed: {e}")
 
 
-def _regenerate_day_prompts(prompt_gen, storage, ep_id, existing_prompts, day_num, day_content, model, aspect_ratio, temperature):
+def _regenerate_day_prompts(prompt_gen, storage, ep_id, existing_prompts, day_num, day_content, model, aspect_ratio, temperature, replace: bool = False):
     with st.spinner(f"Regenerating prompts for Day {day_num}..."):
         try:
-            _save_day_prompts(prompt_gen, storage, ep_id, existing_prompts, day_num, day_content, model, aspect_ratio, temperature, replace=True)
+            _save_day_prompts(prompt_gen, storage, ep_id, existing_prompts, day_num, day_content, model, aspect_ratio, temperature, replace=replace)
             st.success(f"Regenerated Day {day_num}")
             st.rerun()
         except Exception as e:

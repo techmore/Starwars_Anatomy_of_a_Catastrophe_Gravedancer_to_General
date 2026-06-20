@@ -9,19 +9,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 
-try:
-    import streamlit as st
-except ModuleNotFoundError:  # pragma: no cover - allows headless tests
-    class _StreamlitFallback:
-        @staticmethod
-        def cache_resource(func=None):
-            if func is None:
-                def decorator(inner):
-                    return inner
-                return decorator
-            return func
-
-    st = _StreamlitFallback()
+from src.utils._streamlit_fallback import st
+from src.utils.logging_utils import get_logger, log_timing
 
 
 def _target_jedi_name(metadata: Dict[str, Any]) -> str:
@@ -39,6 +28,17 @@ def _normalize_metadata(metadata: Dict[str, Any]) -> Dict[str, Any]:
 
 def _sha256_text(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _summarize_prompts(prompts: Optional[Dict[str, Any]]) -> Dict[str, int]:
+    """Count prompt sets and covered days from a stored prompt payload."""
+    prompt_sets = len(prompts.get("scenes", [])) if isinstance(prompts, dict) else 0
+    prompt_days = len({
+        p.get("day")
+        for p in prompts.get("scenes", [])
+        if isinstance(p, dict) and isinstance(p.get("day"), int) and p.get("day") > 0
+    }) if isinstance(prompts, dict) else 0
+    return {"prompt_sets": prompt_sets, "prompt_days": prompt_days}
 
 
 class EpisodeStorage:
@@ -68,39 +68,49 @@ class EpisodeStorage:
     ) -> str:
         """Save episode to local storage."""
         episode_id = self._generate_episode_id(title)
-        ep_dir = self._get_episode_dir(episode_id)
-        
-        # Save metadata
-        metadata["id"] = episode_id
-        metadata["title"] = title
-        metadata["created_at"] = datetime.now().isoformat()
-        metadata["updated_at"] = datetime.now().isoformat()
-        _normalize_metadata(metadata)
-        
-        with open(ep_dir / "metadata.json", "w") as f:
-            json.dump(metadata, f, indent=2)
-        
-        # Save story as markdown
-        with open(ep_dir / "story.md", "w") as f:
-            f.write(f"# {title}\n\n")
-            f.write(f"**Generated:** {metadata['created_at']}\n\n")
-            f.write(f"**Days:** {metadata.get('num_days', 'N/A')}\n\n")
-            f.write(f"**Target Jedi:** {_target_jedi_name(metadata)}\n\n")
-            f.write(f"**Setting:** {metadata.get('setting', 'Unknown')}\n\n")
-            f.write("---\n\n")
-            f.write(story)
-        
-        # Save prompts if provided
-        if prompts:
-            with open(ep_dir / "prompts.json", "w") as f:
-                json.dump(prompts, f, indent=2)
+        LOGGER.info(
+            "save_episode start title=%s episode_id=%s story_chars=%s prompts=%s",
+            title,
+            episode_id,
+            len(story or ""),
+            bool(prompts),
+        )
+        with log_timing(LOGGER, "save_episode", title=title, episode_id=episode_id):
+            ep_dir = self._get_episode_dir(episode_id)
+            # Save metadata
+            metadata["id"] = episode_id
+            metadata["title"] = title
+            metadata["created_at"] = datetime.now().isoformat()
+            metadata["updated_at"] = datetime.now().isoformat()
+            _normalize_metadata(metadata)
+
+            with open(ep_dir / "metadata.json", "w") as f:
+                json.dump(metadata, f, indent=2)
+
+            # Save story as markdown
+            with open(ep_dir / "story.md", "w") as f:
+                f.write(f"# {title}\n\n")
+                f.write(f"**Generated:** {metadata['created_at']}\n\n")
+                f.write(f"**Days:** {metadata.get('num_days', 'N/A')}\n\n")
+                f.write(f"**Target Jedi:** {_target_jedi_name(metadata)}\n\n")
+                f.write(f"**Setting:** {metadata.get('setting', 'Unknown')}\n\n")
+                f.write("---\n\n")
+                f.write(story)
+
+            # Save prompts if provided
+            if prompts:
+                with open(ep_dir / "prompts.json", "w") as f:
+                    json.dump(prompts, f, indent=2)
+        LOGGER.info("save_episode end title=%s episode_id=%s", title, episode_id)
         
         return episode_id
     
     def load_episode(self, episode_id: str) -> Optional[Dict[str, Any]]:
         """Load episode from storage."""
+        LOGGER.info("load_episode start episode_id=%s", episode_id)
         ep_dir = self.base_path / episode_id
         if not ep_dir.exists():
+            LOGGER.warning("load_episode missing episode_id=%s", episode_id)
             return None
         
         metadata_path = ep_dir / "metadata.json"
@@ -108,6 +118,7 @@ class EpisodeStorage:
         prompts_path = ep_dir / "prompts.json"
         
         if not metadata_path.exists():
+            LOGGER.warning("load_episode missing metadata episode_id=%s", episode_id)
             return None
         
         with open(metadata_path, "r") as f:
@@ -124,22 +135,32 @@ class EpisodeStorage:
             with open(prompts_path, "r") as f:
                 prompts = json.load(f)
         
-        return {
+        episode = {
             "metadata": metadata,
             "story": story,
             "prompts": prompts
         }
+        LOGGER.info(
+            "load_episode end episode_id=%s story_chars=%s has_prompts=%s",
+            episode_id,
+            len(story or ""),
+            bool(prompts),
+        )
+        return episode
 
     def export_episode_bundle(self, episode_id: str) -> Optional[Dict[str, Any]]:
         """Return a canonical export bundle for an episode."""
+        LOGGER.info("export_episode_bundle start episode_id=%s", episode_id)
         episode = self.load_episode(episode_id)
         if not episode:
+            LOGGER.warning("export_episode_bundle missing episode_id=%s", episode_id)
             return None
 
         metadata = dict(episode["metadata"])
         _normalize_metadata(metadata)
         story = episode["story"]
         prompts = episode.get("prompts")
+        prompt_summary = _summarize_prompts(prompts)
         files = {
             "metadata_json": str(self.base_path / episode_id / "metadata.json"),
             "story_md": str(self.base_path / episode_id / "story.md"),
@@ -168,6 +189,8 @@ class EpisodeStorage:
             "metadata": metadata,
             "story": story,
             "prompts": prompts,
+            "prompt_sets": prompt_summary["prompt_sets"],
+            "prompt_days": prompt_summary["prompt_days"],
             "files": files,
         }
 
@@ -178,36 +201,51 @@ class EpisodeStorage:
             "files": manifest_files,
         }
 
+        LOGGER.info(
+            "export_episode_bundle end episode_id=%s story_chars=%s prompt_sets=%s prompt_days=%s",
+            episode_id,
+            len(story or ""),
+            prompt_summary["prompt_sets"],
+            prompt_summary["prompt_days"],
+        )
         return bundle_payload
 
     def write_episode_bundle(self, episode_id: str, filename: str = "bundle.json") -> Optional[str]:
         """Write the canonical bundle to disk and return the file path."""
+        LOGGER.info("write_episode_bundle start episode_id=%s filename=%s", episode_id, filename)
         bundle = self.export_episode_bundle(episode_id)
         if not bundle:
+            LOGGER.warning("write_episode_bundle missing episode_id=%s", episode_id)
             return None
 
         ep_dir = self.base_path / episode_id
         bundle_path = ep_dir / filename
         with open(bundle_path, "w") as f:
             json.dump(bundle, f, indent=2)
+        LOGGER.info("write_episode_bundle end episode_id=%s path=%s", episode_id, bundle_path)
         return str(bundle_path)
 
     def write_episode_archive(self, episode_id: str, filename: str = "bundle.zip") -> Optional[str]:
         """Write the episode bundle and source files to a zip archive."""
+        LOGGER.info("write_episode_archive start episode_id=%s filename=%s", episode_id, filename)
         archive_bytes = self.build_episode_archive_bytes(episode_id)
         if archive_bytes is None:
+            LOGGER.warning("write_episode_archive missing episode_id=%s", episode_id)
             return None
 
         ep_dir = self.base_path / episode_id
         archive_path = ep_dir / filename
         with open(archive_path, "wb") as f:
             f.write(archive_bytes)
+        LOGGER.info("write_episode_archive end episode_id=%s path=%s bytes=%s", episode_id, archive_path, len(archive_bytes))
         return str(archive_path)
 
     def build_episode_archive_bytes(self, episode_id: str) -> Optional[bytes]:
         """Build the episode archive as zip bytes."""
+        LOGGER.info("build_episode_archive_bytes start episode_id=%s", episode_id)
         bundle = self.export_episode_bundle(episode_id)
         if not bundle:
+            LOGGER.warning("build_episode_archive_bytes missing episode_id=%s", episode_id)
             return None
 
         buf = io.BytesIO()
@@ -218,10 +256,13 @@ class EpisodeStorage:
                 path = Path(file_path)
                 if path.exists():
                     zf.write(path, arcname=path.name)
-        return buf.getvalue()
+        archive = buf.getvalue()
+        LOGGER.info("build_episode_archive_bytes end episode_id=%s bytes=%s", episode_id, len(archive))
+        return archive
     
     def list_episodes(self) -> List[Dict[str, Any]]:
         """List all episodes with metadata."""
+        LOGGER.info("list_episodes start base_path=%s", self.base_path)
         episodes = []
         for ep_dir in sorted(self.base_path.iterdir(), key=lambda x: x.name, reverse=True):
             if ep_dir.is_dir():
@@ -229,6 +270,12 @@ class EpisodeStorage:
                 if metadata_path.exists():
                     with open(metadata_path, "r") as f:
                         metadata = json.load(f)
+                    prompt_summary = {"prompt_sets": 0, "prompt_days": 0}
+                    prompts_path = ep_dir / "prompts.json"
+                    if prompts_path.exists():
+                        with open(prompts_path, "r") as f:
+                            prompts = json.load(f)
+                        prompt_summary = _summarize_prompts(prompts)
                     episodes.append({
                         "id": ep_dir.name,
                         "title": metadata.get("title", "Untitled"),
@@ -236,8 +283,11 @@ class EpisodeStorage:
                         "num_days": metadata.get("num_days", 0),
                         "jedi_name": _target_jedi_name(metadata),
                         "target_jedi_name": _target_jedi_name(metadata),
-                        "setting": metadata.get("setting", "Unknown")
+                        "setting": metadata.get("setting", "Unknown"),
+                        "prompt_sets": prompt_summary["prompt_sets"],
+                        "prompt_days": prompt_summary["prompt_days"],
                     })
+        LOGGER.info("list_episodes end count=%s base_path=%s", len(episodes), self.base_path)
         return episodes
     
     def delete_episode(self, episode_id: str) -> bool:
@@ -306,8 +356,28 @@ class EpisodeStorage:
 
         return True
 
+    def save_image(
+        self,
+        episode_id: str,
+        day: int,
+        shot: str,
+        image_bytes: bytes,
+    ) -> str:
+        """Save a keyframe image to the episode's images/ directory.
+
+        Returns the relative path from the episode root.
+        """
+        ep_dir = self._get_episode_dir(episode_id)
+        imgs_dir = ep_dir / "images"
+        imgs_dir.mkdir(parents=True, exist_ok=True)
+        path = imgs_dir / f"day-{day:02d}-{shot}.png"
+        path.write_bytes(image_bytes)
+        LOGGER.info("save_image episode_id=%s day=%s shot=%s bytes=%s path=%s", episode_id, day, shot, len(image_bytes), path)
+        return str(path.relative_to(self.base_path))
+
 
 @st.cache_resource
 def get_storage(base_path: str = "episodes") -> EpisodeStorage:
     """Get cached storage instance."""
     return EpisodeStorage(base_path)
+LOGGER = get_logger(__name__)

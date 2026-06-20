@@ -6,6 +6,7 @@ from typing import List, Dict, Any
 from src.utils.prompt_generator import PromptGenerator
 from src.utils.story_generator import StoryGenerator
 from src.utils.storage import EpisodeStorage
+from src.utils.logging_utils import start_new_run_log
 
 
 def render_prompts_tab(
@@ -16,7 +17,7 @@ def render_prompts_tab(
     prompt_gen: PromptGenerator = context.prompt_gen
     story_gen: StoryGenerator = context.story_gen
     storage: EpisodeStorage = context.storage
-    model: str = context.model
+    model: str = context.mlx_model
     temperature: float = context.temperature
     
     st.markdown("## Scene Prompts & Visual Pipeline")
@@ -26,7 +27,7 @@ def render_prompts_tab(
     episodes = storage.list_episodes()
     
     if not episodes:
-        st.info("No episodes available. Generate one in the Creator tab.")
+        st.info("No episodes available. Generate one in the Story tab.")
         return
     
     ep_options = {f"{ep['title']} ({ep['created_at'][:10]})": ep['id'] for ep in episodes}
@@ -66,17 +67,32 @@ def render_prompts_tab(
             value=False,
             key="prompts_use_existing"
         )
+
+    save_mode = st.radio(
+        "When saving new prompts",
+        ["Replace matching days", "Append as alternates"],
+        index=0,
+        key="prompts_save_mode",
+        horizontal=True,
+    )
     
     st.markdown("---")
     
+    prompt_payload = episode.get("prompts") or {}
+    saved_scenes = prompt_payload.get("scenes", []) if isinstance(prompt_payload, dict) else []
+
     # Auto-extract scenes
     if st.button("Extract Key Scenes", type="primary"):
         with st.spinner("Analyzing story for visual potential..."):
             scenes = prompt_gen.extract_scenes(story, max_scenes_per_day=max_scenes)
             st.session_state["extracted_scenes"] = scenes
             st.success(f"Extracted {len(scenes)} key scenes.")
-    
+
     scenes = st.session_state.get("extracted_scenes", [])
+    if use_existing and saved_scenes and not scenes:
+        scenes = saved_scenes
+        st.session_state["extracted_scenes"] = scenes
+        st.info(f"Loaded {len(scenes)} saved scene prompt set(s) from the episode library.")
     
     if not scenes:
         st.info("Click 'Extract Key Scenes' to begin.")
@@ -88,9 +104,11 @@ def render_prompts_tab(
     
     for i, scene in enumerate(scenes):
         with st.expander(
-            f"Day {scene['day']} - Scene {i+1} (Visual Score: {scene['visual_score']})",
+            f"Day {scene['day']} - {scene.get('display_title', f'Scene {i+1}')} (Visual Score: {scene['visual_score']})",
             expanded=False
         ):
+            if scene.get("beat_label"):
+                st.caption(f"Beat anchor: {scene['beat_label']}")
             st.markdown(f"```\n{scene['text']}\n```")
             if st.checkbox(f"Include this scene", value=True, key=f"scene_select_{i}"):
                 selected_scenes.append(scene)
@@ -102,7 +120,18 @@ def render_prompts_tab(
         return
     
     st.markdown(f"**{len(selected_scenes)} scene(s) selected for prompt generation.**")
-    
+
+    with st.expander("Beat Summary", expanded=True):
+        for scene in selected_scenes:
+            st.markdown(
+                f"- **Day {scene['day']}**"
+                f"{' | ' + scene['beat_label'] if scene.get('beat_label') else ''}"
+                f" | score {scene['visual_score']}"
+            )
+            preview_text = scene.get("text", "").strip()
+            if preview_text:
+                st.caption(preview_text[:240] + ("..." if len(preview_text) > 240 else ""))
+
     # Generate prompts
     col_gen, col_batch = st.columns(2)
     with col_gen:
@@ -113,6 +142,7 @@ def render_prompts_tab(
             st.session_state["batch_json"] = True
     
     if generate_clicked:
+        st.session_state["log_run_path"] = str(start_new_run_log("prompt-batch"))
         with st.spinner(f"Generating prompts for {len(selected_scenes)} scenes..."):
             try:
                 results = prompt_gen.generate_batch_prompts(
@@ -125,10 +155,14 @@ def render_prompts_tab(
                 st.session_state["generated_prompts"] = results
                 
                 # Save to episode
+                existing_prompt_sets = list((episode.get("prompts") or {}).get("scenes", []))
+                replace_mode = save_mode == "Replace matching days"
+                merged_prompt_sets = [p for p in existing_prompt_sets if not replace_mode or p.get("day") not in {r.get("day") for r in results}]
+                merged_prompt_sets.extend(results)
                 storage.update_episode(
                     episode_id=selected_id,
                     prompts={
-                        "scenes": results,
+                        "scenes": merged_prompt_sets,
                         "aspect_ratio": aspect_ratio
                     }
                 )
@@ -163,6 +197,8 @@ def render_prompts_tab(
             continue
         
         with st.expander(f"Day {result['day']} - Scene {i+1} Prompts", expanded=False):
+            if result.get("beat_label"):
+                st.caption(f"Beat anchor: {result['beat_label']}")
             # Scene text
             st.markdown("**Scene Text:**")
             st.markdown(f"```\n{result.get('scene_text', '')}\n```")
@@ -222,7 +258,7 @@ def render_prompts_tab(
             
             # Raw response
             with st.expander("Raw LLM Response"):
-                st.text(result.get("raw_response", ""))
+                st.markdown(f"<pre class='pre-wrap'>{result.get('raw_response', '')}</pre>", unsafe_allow_html=True)
     
     # Draw Things workflow notes
     st.markdown("---")

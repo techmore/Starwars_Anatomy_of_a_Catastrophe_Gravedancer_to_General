@@ -1,4 +1,5 @@
 streamlit>=1.35.0
 requests>=2.31.0
 pillow>=10.0.0
-mlx-lm>=0.21.0
+mlx-lm @ git+https://github.com/ml-explore/mlx-lm.git
+mlx-optiq

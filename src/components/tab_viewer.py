@@ -3,10 +3,7 @@
 import streamlit as st
 from src.utils.story_generator import StoryGenerator
 from src.utils.storage import EpisodeStorage
-
-
-def _target_jedi_name(metadata):
-    return metadata.get("target_jedi_name") or metadata.get("jedi_name") or "Unknown"
+from src.utils.session_state import get_episode_target_jedi_name
 
 
 def render_viewer_tab(context):
@@ -21,7 +18,7 @@ def render_viewer_tab(context):
     episodes = storage.list_episodes()
     
     if not episodes:
-        st.info("No episodes saved yet. Generate one in the Creator tab.")
+        st.info("No episodes saved yet. Generate one in the Story tab.")
         return
     
     ep_options = {f"{ep['title']} ({ep['created_at'][:10]})": ep['id'] for ep in episodes}
@@ -49,7 +46,7 @@ def render_viewer_tab(context):
     with stat_col3:
         st.metric("Reading Time", f"{stats['reading_time_minutes']} min")
     with stat_col4:
-        st.metric("Target Jedi", _target_jedi_name(metadata))
+        st.metric("Target Jedi", get_episode_target_jedi_name(episode))
     
     st.markdown("---")
     
@@ -58,7 +55,7 @@ def render_viewer_tab(context):
         meta_col1, meta_col2 = st.columns(2)
         with meta_col1:
             st.markdown(f"**Title:** {metadata.get('title', 'N/A')}")
-            st.markdown(f"**Target Jedi:** {_target_jedi_name(metadata)}")
+            st.markdown(f"**Target Jedi:** {get_episode_target_jedi_name(episode)}")
             st.markdown(f"**Species:** {metadata.get('jedi_species', 'N/A')}")
             st.markdown(f"**Rank:** {metadata.get('jedi_rank', 'N/A')}")
         with meta_col2:

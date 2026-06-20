@@ -3,10 +3,12 @@
 import streamlit as st
 import json
 from src.utils.storage import EpisodeStorage
-
-
-def _target_jedi_name(ep):
-    return ep.get("target_jedi_name") or ep.get("jedi_name") or "Unknown"
+from src.utils.session_state import (
+    build_episode_full_json_export,
+    get_episode_target_jedi_name,
+    render_episode_prompt_archive_summary,
+    summarize_episode_collection,
+)
 
 
 def render_library_tab(context):
@@ -17,21 +19,32 @@ def render_library_tab(context):
     st.markdown('<div class="blood-accent">Your archive of hunts. Export. Share. Continue the legacy.</div>', unsafe_allow_html=True)
     
     episodes = storage.list_episodes()
+    collection_summary = summarize_episode_collection(episodes)
     
     if not episodes:
-        st.info("No episodes saved yet. Generate one in the Creator tab.")
+        st.info("No episodes saved yet. Generate one in the Story tab.")
         return
     
     # Stats
     stat_col1, stat_col2, stat_col3 = st.columns(3)
     with stat_col1:
-        st.metric("Total Episodes", len(episodes))
+        st.metric("Total Episodes", collection_summary["total_episodes"])
     with stat_col2:
-        total_days = sum(ep.get("num_days", 0) for ep in episodes)
-        st.metric("Total Days", total_days)
+        st.metric("Total Days", collection_summary["total_days"])
     with stat_col3:
-        unique_jedi = len(set(_target_jedi_name(ep) for ep in episodes))
-        st.metric("Unique Jedi", unique_jedi)
+        st.metric("Unique Jedi", collection_summary["unique_jedi"])
+
+    prompt_col1, prompt_col2 = st.columns(2)
+    with prompt_col1:
+        st.metric("Saved Prompt Sets", collection_summary["total_prompt_sets"])
+    with prompt_col2:
+        st.metric("Episodes With Prompts", collection_summary["episodes_with_prompts"])
+
+    coverage_col1, coverage_col2 = st.columns(2)
+    with coverage_col1:
+        st.metric("Prompt Days Covered", collection_summary["total_prompt_days"])
+    with coverage_col2:
+        st.metric("Fully Covered Episodes", collection_summary["covered_episodes"])
     
     st.markdown("---")
     
@@ -53,7 +66,7 @@ def render_library_tab(context):
         filtered = [
             ep for ep in filtered
             if search_lower in ep.get("title", "").lower()
-            or search_lower in _target_jedi_name(ep).lower()
+            or search_lower in get_episode_target_jedi_name(ep).lower()
         ]
     
     if sort_by == "Newest first":
@@ -78,9 +91,11 @@ def render_library_tab(context):
                 with col:
                     with st.container():
                         st.markdown(f"### {ep.get('title', 'Untitled')}")
-                        st.markdown(f"**Target Jedi:** {_target_jedi_name(ep)}")
+                        st.markdown(f"**Target Jedi:** {get_episode_target_jedi_name(ep)}")
                         st.markdown(f"**Setting:** {ep.get('setting', 'Unknown')}")
                         st.markdown(f"**Days:** {ep.get('num_days', 'N/A')}")
+                        st.markdown(f"**Prompt Sets:** {ep.get('prompt_sets', 0)}")
+                        st.markdown(f"**Prompt Days:** {ep.get('prompt_days', 0)}")
                         st.markdown(f"*Created: {ep.get('created_at', '')[:10]}*")
                         
                         btn_col1, btn_col2, btn_col3 = st.columns(3)
@@ -121,6 +136,8 @@ def render_library_tab(context):
         if episode:
             st.markdown("---")
             st.markdown(f"### Export: {episode['metadata'].get('title', 'Untitled')}")
+            prompt_summary = render_episode_prompt_archive_summary(st, episode)
+            st.caption(f"Saved prompt sets: {prompt_summary['prompt_sets']}")
             
             exp_col1, exp_col2, exp_col3 = st.columns(3)
             
@@ -136,11 +153,7 @@ def render_library_tab(context):
             
             with exp_col2:
                 # JSON export
-                json_data = {
-                    "metadata": episode["metadata"],
-                    "story": episode["story"],
-                    "prompts": episode.get("prompts")
-                }
+                json_data = build_episode_full_json_export(episode)
                 st.download_button(
                     "Download Full JSON",
                     data=json.dumps(json_data, indent=2),

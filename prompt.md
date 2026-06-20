@@ -66,6 +66,15 @@ When calling the text model:
 - provide a structured user prompt with episode title, days, setting, Jedi details, tone, and notes
 - support regeneration of the full story or individual days
 - store the generated story as Markdown plus metadata JSON
+- prefer a multi-pass structure over a single monolithic generation:
+  1. outline the full episode
+  2. break each day into 3 to 5 named sections or chapters
+  3. break each section into 2 to 4 concrete micro-beats
+  4. expand each section into prose from the outline
+  5. optionally run a continuity pass to remove contradictions
+- treat each day as an episode-sized installment, roughly 7,500 words per day, with a 5-day run acting as five linked episodes that maintain flow
+- keep the daily target word count high, but never allow rambling to replace structure
+- preserve continuity of injuries, locations, emotional state, and tactical positioning across days
 
 The base story prompt should enforce:
 - cinematic, visceral prose
@@ -74,6 +83,11 @@ The base story prompt should enforce:
 - internal monologue for Qymaen
 - sparse but meaningful dialogue
 - strong scene segmentation by day
+- explicit anti-ramble guidance
+- no invention of major plot turns during expansion passes
+- explicit day-to-chapter-to-micro-beat-to-prose layering so the model stays anchored
+- style guidance should be defined by traits, not direct imitation of living authors
+- useful style traits include military thriller pacing, gothic war-story atmosphere, and lean, high-tension prose
 
 ## Visual Pipeline Requirements
 The app should generate visual prompts optimized for:
@@ -139,6 +153,26 @@ The user should be able to edit the base system prompts in the app settings, but
 - Draw Things for media
 - Flux.2 Klein 4b for stills
 - Wan 2.2 High Noise 6-bit SVDQuant for video workflow
+
+## Prompt Architecture Recommendation
+Use layered prompts that keep responsibilities separate:
+- episode prompt: high-level arc and constraints
+- outline prompt: one short named micro-beat list per day
+- day expansion prompt: expand only the current day from the outline
+- section expansion prompt: expand only the current section or chapter
+- micro-beat structure inside each section: concrete cause-and-effect beats, not vague mood language
+- continuity prompt: clean up contradictions after generation
+- shared schema prompt file: keep the canonical wording for episode, outline, day, section, and continuity prompts in one place so the app, tests, and docs stay aligned
+
+This hierarchy is the best fit for long-form episodic writing because it keeps the model anchored to structure before style.
+
+## Current Implementation Notes
+The codebase already follows this layered shape:
+- `StoryGenerator` builds the episode prompt, outline prompt, day expansion prompt, section expansion prompt, and continuity cleanup prompt
+- `PromptGenerator` extracts scenes from the day structure and turns them into Draw Things + Wan prompts
+- `EpisodeStorage` persists the episode, prompt sets, and archive exports locally
+- the UI should keep exposing generation progress clearly so the user can tell which pass is running
+- the concept pass should stay short and strict, with a hard validator for the final structured output
 
 ## Current Priority
 Do not spend time on a ComfyUI workflow. That is not the target pipeline.

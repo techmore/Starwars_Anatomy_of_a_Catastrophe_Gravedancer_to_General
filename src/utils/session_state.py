@@ -6,13 +6,14 @@ from src.prompts.system_prompts import (
     STORY_GENERATION_SYSTEM_PROMPT,
     VISUAL_PROMPT_SYSTEM_PROMPT,
 )
+from src.utils.models import DEFAULT_MODEL
 
 
 SESSION_DEFAULTS = {
     "current_episode_id": None,
     "current_story": "",
     "current_metadata": {},
-    "mlx_model": "mlx-community/Qwen3.6-27B-4bit",
+    "mlx_model": DEFAULT_MODEL,
     "drawthings_url": "http://localhost:7860",
     "model": "",
     "temperature": 0.8,
@@ -25,6 +26,14 @@ SESSION_DEFAULTS = {
     "story_days": 5,
     "story_setting": "",
     "story_tone": [],
+    "story_outline": "",
+    "story_outline_days": [],
+    "story_section_previews": {},
+    "story_section_drafts": {},
+    "story_day_drafts": {},
+    "story_draft_only_mode": False,
+    "story_outline_approved": False,
+    "current_critique_report": None,
 }
 
 
@@ -68,6 +77,14 @@ def reset_story_flow(st) -> None:
     """Reset both the current episode and the story form inputs."""
     clear_current_episode(st)
     clear_story_inputs(st)
+    st.session_state["story_outline"] = ""
+    st.session_state["story_outline_days"] = []
+    st.session_state["story_section_previews"] = {}
+    st.session_state["story_section_drafts"] = {}
+    st.session_state["story_day_drafts"] = {}
+    st.session_state["story_draft_only_mode"] = False
+    st.session_state["story_outline_approved"] = False
+    st.session_state["current_critique_report"] = None
 
 
 def hydrate_story_inputs(st, concept: dict) -> None:
@@ -158,6 +175,73 @@ def get_episode_prompt_sets(episode: dict) -> list:
 def get_episode_day_prompt_sets(episode: dict, day_num: int) -> list:
     """Return the prompt sets for a specific day from an episode."""
     return [p for p in get_episode_prompt_sets(episode) if p.get("day") == day_num]
+
+
+def get_episode_target_jedi_name(episode: dict) -> str:
+    """Return the canonical display name for the episode's target Jedi."""
+    return episode.get("target_jedi_name") or episode.get("jedi_name") or "Unknown"
+
+
+def summarize_episode_prompt_archive(episode: dict) -> dict:
+    """Summarize saved prompt coverage for one episode."""
+    prompt_sets = get_episode_prompt_sets(episode)
+    day_counts = {}
+    for prompt_set in prompt_sets:
+        day_num = prompt_set.get("day", "Unknown")
+        day_counts[day_num] = day_counts.get(day_num, 0) + 1
+    prompt_days = len({day for day in day_counts if isinstance(day, int) and day > 0})
+    return {
+        "prompt_sets": len(prompt_sets),
+        "prompt_days": prompt_days,
+        "day_counts": day_counts,
+        "prompt_sets_list": prompt_sets,
+    }
+
+
+def render_episode_prompt_archive_summary(st, episode: dict, expanded: bool = False) -> dict:
+    """Render the saved prompt coverage summary and return the computed summary."""
+    summary = summarize_episode_prompt_archive(episode)
+    if summary["prompt_sets"]:
+        with st.expander("Prompt Set Breakdown", expanded=expanded):
+            st.markdown(f"**Total saved prompt sets:** {summary['prompt_sets']}")
+            for day_num in sorted(summary["day_counts"], key=lambda x: (x == "Unknown", x)):
+                st.markdown(f"- Day {day_num}: {summary['day_counts'][day_num]} set(s)")
+    return summary
+
+
+def build_episode_full_json_export(episode: dict) -> dict:
+    """Build the downloadable full JSON payload for an episode."""
+    summary = summarize_episode_prompt_archive(episode)
+    return {
+        "metadata": episode.get("metadata", {}),
+        "story": episode.get("story", ""),
+        "prompts": episode.get("prompts"),
+        "prompt_sets": summary["prompt_sets"],
+        "prompt_days": summary["prompt_days"],
+    }
+
+
+def summarize_episode_collection(episodes: list) -> dict:
+    """Summarize prompt/archive coverage across a list of episodes."""
+    total_episodes = len(episodes)
+    total_days = sum(ep.get("num_days", 0) for ep in episodes)
+    unique_jedi = len({get_episode_target_jedi_name(ep) for ep in episodes})
+    total_prompt_sets = sum(ep.get("prompt_sets", 0) for ep in episodes)
+    episodes_with_prompts = sum(1 for ep in episodes if ep.get("prompt_sets", 0) > 0)
+    total_prompt_days = sum(ep.get("prompt_days", 0) for ep in episodes)
+    covered_episodes = sum(
+        1 for ep in episodes
+        if ep.get("prompt_days", 0) >= ep.get("num_days", 0) and ep.get("num_days", 0) > 0
+    )
+    return {
+        "total_episodes": total_episodes,
+        "total_days": total_days,
+        "unique_jedi": unique_jedi,
+        "total_prompt_sets": total_prompt_sets,
+        "episodes_with_prompts": episodes_with_prompts,
+        "total_prompt_days": total_prompt_days,
+        "covered_episodes": covered_episodes,
+    }
 
 
 def build_story_generation_context(st) -> dict:

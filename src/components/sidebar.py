@@ -2,9 +2,14 @@
 
 import streamlit as st
 
+from src.utils.logging_utils import get_logger, get_run_log_name, list_log_runs, read_log_tail, start_new_run_log
 from src.utils.mlx_client import get_mlx_client
+from src.utils.models import normalize_model_name, list_local_mlx_models, DEFAULT_MODEL
 from src.utils.storage import get_storage
 from src.utils.drawthings_client import get_drawthings_client, DEFAULT_DT_PORTS
+
+
+LOGGER = get_logger(__name__)
 
 
 def _cached_mlx_status(model_name: str):
@@ -50,15 +55,38 @@ def render_sidebar():
 
         # ---------- MLX ----------
         st.markdown("**MLX**")
-        model = st.text_input(
+        local_models = list_local_mlx_models()
+        model_options = local_models + [("Custom...", "__custom__")]
+        current_model = st.session_state["mlx_model"]
+        # Find current model in options; default to Custom if not found
+        local_repo_ids = [r for _, r in local_models]
+        current_idx = len(model_options) - 1  # default to Custom
+        for idx, (label, repo_id) in enumerate(model_options):
+            if repo_id == current_model:
+                current_idx = idx
+                break
+        selected = st.selectbox(
             "Model",
-            value=st.session_state["mlx_model"],
-            key="model_input",
+            options=model_options,
+            format_func=lambda x: x[0],
+            index=current_idx,
+            key="model_selector",
             label_visibility="collapsed",
-            help="Use a local MLX model path or Hugging Face repo ID, e.g. `mlx-community/Qwen3.6-27B-4bit`.",
         )
+        if selected[1] == "__custom__":
+            model = st.text_input(
+                "Custom model",
+                value=current_model,
+                key="custom_model_input",
+                label_visibility="collapsed",
+                help="Enter a Hugging Face repo ID or local path.",
+            )
+        else:
+            model = selected[1]
+        model = normalize_model_name(model)
         st.session_state["mlx_model"] = model
         mlx = get_mlx_client(model)
+        LOGGER.info("sidebar model resolved model=%s session_model=%s", model, st.session_state["mlx_model"])
 
         mlx_status = _cached_mlx_status(model)
         if mlx_status["connected"]:
@@ -139,6 +167,7 @@ def render_sidebar():
         )
         st.session_state["storage_path"] = storage_path
         storage = get_storage(storage_path)
+        LOGGER.info("sidebar storage path=%s episodes=%s", storage_path, len(storage.list_episodes()))
 
         st.markdown("---")
 
@@ -190,6 +219,31 @@ def render_sidebar():
                 key="visual_sys_editor",
             )
             st.session_state["visual_sys_prompt"] = visual_sys
+
+            st.markdown("---")
+            st.markdown("**Current Run**")
+            st.caption(get_run_log_name())
+            if st.button("Start New Run Bucket", key="sidebar_new_run", use_container_width=True):
+                st.session_state["log_run_path"] = str(start_new_run_log("manual"))
+                st.rerun()
+
+            st.markdown("---")
+            st.markdown("**Log Tail**")
+            max_lines = st.slider("Lines", min_value=20, max_value=300, value=120, step=10, key="log_tail_lines")
+            tail = read_log_tail(max_lines=max_lines)
+            if tail:
+                st.code(tail, language="text")
+            else:
+                st.caption("No log entries yet.")
+
+            st.markdown("---")
+            st.markdown("**Recent Runs**")
+            runs = list_log_runs(limit=5)
+            if runs:
+                for run in runs:
+                    st.caption(run.name)
+            else:
+                st.caption("No archived run logs yet.")
 
     return mlx, dt_client, st.session_state["mlx_model"], st.session_state["temperature"], storage
 

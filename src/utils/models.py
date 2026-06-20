@@ -28,6 +28,26 @@ MODEL_CATALOG = {
         "story_pull": True,
         "platform": "mac"
     },
+    "mlx-community/Qwen3.5-4B-4bit": {
+        "display": "Qwen 3.5 4B 4-bit MLX (fast iteration)",
+        "quality": "good",
+        "tier": 1,
+        "strengths": ["Very fast", "Low memory footprint", "Great for iteration"],
+        "ram_gb": "~4-6",
+        "family": "qwen",
+        "story_pull": True,
+        "platform": "mac"
+    },
+    "mlx-community/gemma-4-12B-it-OptiQ-4bit": {
+        "display": "Gemma 4 12B OptiQ 4-bit MLX",
+        "quality": "good",
+        "tier": 1,
+        "strengths": ["Strong instruction following", "Clean JSON output", "Less reasoning overhead"],
+        "ram_gb": "~8-10",
+        "family": "gemma",
+        "story_pull": True,
+        "platform": "mac"
+    },
     "qwen3.6": {
         "display": "Qwen 3.6 27B (excellent prose, long context)",
         "quality": "best",
@@ -125,6 +145,8 @@ MODEL_CATALOG = {
 # MLX variants come first — they're optimized for Apple Silicon Macs
 STORY_RECOMMENDED = [
     "mlx-community/Qwen3.6-27B-4bit",
+    "mlx-community/gemma-4-12B-it-OptiQ-4bit",
+    "mlx-community/Qwen3.5-4B-4bit",
     "qwen3.6:27b-mlx",
     "qwen3.6",
     "qwen2.5",
@@ -136,8 +158,26 @@ STORY_RECOMMENDED = [
     "mixtral"
 ]
 
-# Default model — prefer the lighter 4-bit MLX build when available
-DEFAULT_MODEL = "mlx-community/Qwen3.6-27B-4bit"
+import os
+import re
+from pathlib import Path
+
+
+# (rest of the file content stays the same...)
+
+# Default model — Gemma 12B for cleaner instruction following and less
+# reasoning overhead than Qwen 3.5 (which wasted tokens on chain-of-thought).
+# Updated to Gemma 4 4B for faster inference while maintaining quality.
+DEFAULT_MODEL = "mlx-community/gemma-4-e2b-it-qat-OptiQ-4bit"
+
+MODEL_ALIASES = {
+    "qwen3.6:27b-mlx": "mlx-community/Qwen3.6-27B-4bit",
+}
+
+
+def normalize_model_name(model_name: str) -> str:
+    """Map UI-friendly aliases to a valid MLX repo id or local path."""
+    return MODEL_ALIASES.get(model_name, model_name)
 
 
 def get_model_info(installed_name: str) -> dict:
@@ -216,8 +256,15 @@ def format_model_label(installed_name: str) -> str:
 def get_install_commands() -> str:
     """Generate setup commands for recommended models."""
     return """\
-# DEFAULT — lighter Apple Silicon optimized (MLX/Metal)
+# Prerequisites for Gemma 4 (gemma4_unified model type needs mlx-lm from git + optiq)
+pip install -U mlx-optiq "mlx-lm @ git+https://github.com/ml-explore/mlx-lm.git"
+
+# DEFAULT — Gemma 4 12B OptiQ (clean instruction following, less reasoning overhead)
+python -m mlx_lm.chat --model mlx-community/gemma-4-12B-it-OptiQ-4bit  # ~8-10GB, clean JSON + prose
+
+# Alternatives — lighter / faster iteration
 python -m mlx_lm.generate --model mlx-community/Qwen3.6-27B-4bit --prompt "Sanity check"  # ~14-16GB — lighter 4-bit MLX build for M-series Macs
+python -m mlx_lm.chat --model mlx-community/Qwen3.5-4B-4bit  # ~4-6GB, fast iteration on M-series Macs
 
 # Alternative MLX build
 python -m mlx_lm.generate --model qwen3.6:27b-mlx --prompt "Sanity check"      # ~18-20GB — MLX-accelerated for M-series Macs
@@ -234,3 +281,37 @@ python -m mlx_lm.generate --model llama3.1 --prompt "Sanity check"             #
 python -m mlx_lm.generate --model gemma2 --prompt "Sanity check"               # ~5.4GB, fast
 python -m mlx_lm.generate --model mixtral --prompt "Sanity check"              # ~26GB, MoE
 """
+
+
+MLX_CACHE_DIR = Path.home() / ".cache" / "huggingface" / "hub"
+
+
+def list_local_mlx_models() -> list:
+    """Scan the HuggingFace cache for downloaded MLX models.
+
+    Returns a list of (display_label, repo_id) tuples sorted with
+    best-for-stories first.
+    """
+    models: list[tuple[str, str]] = []
+    if not MLX_CACHE_DIR.is_dir():
+        return []
+    for entry in sorted(MLX_CACHE_DIR.iterdir()):
+        name = entry.name
+        # Cache dirs follow the pattern: models--org--repo-name
+        if not name.startswith("models--"):
+            continue
+        # Convert directory name back to HF repo ID
+        parts = name.split("--")
+        if len(parts) >= 3:
+            repo_id = f"{parts[1]}/{'--'.join(parts[2:])}"
+        else:
+            repo_id = name
+        # Check if the model actually has snapshots downloaded
+        refs_dir = entry / "refs"
+        if not refs_dir.is_dir():
+            continue
+        label = format_model_label(repo_id)
+        models.append((label, repo_id))
+    sorted_models = sort_models_for_ui([m[1] for m in models])
+    label_map = {m[1]: m[0] for m in models}
+    return [(label_map.get(m, m), m) for m in sorted_models]

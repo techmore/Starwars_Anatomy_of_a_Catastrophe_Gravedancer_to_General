@@ -60,6 +60,62 @@ Painterly concept art with stark shadows and crimson highlights.
         self.assertIn("tracking dolly", parsed["video_camera"].lower())
         self.assertIn("slow cinematic approach", parsed["video_wan_prompt"])
 
+    def test_prompt_generator_logs_scene_flow(self):
+        generator = PromptGenerator(Mock())
+        story = """
+## DAY 1: Arrival
+
+The Gravedancer ignites his blade and charges through the ruins, sparks and ash flying around his mask.
+"""
+
+        with self.assertLogs("src.utils.prompt_generator", level="INFO") as logs:
+            scenes = generator.extract_scenes(story, max_scenes_per_day=1)
+            prompt = generator.build_scene_prompt("A clash in the ash", day_number=1, beat_label="Beat 1", aspect_ratio="16:9")
+            parsed = generator._parse_scene_prompts(
+                response="""
+**1. Wide/Establishing Shot:**
+Ash and ruin.
+
+**2. Medium/Action Shot:**
+The Gravedancer swings.
+
+**3. Close-up/Detail Shot:**
+Bone mask and amber eye.
+
+**4. Dramatic/Low Angle Shot:**
+Low angle menace.
+
+**5. Alternate Style:**
+Storyboard frame.
+
+**Negative Prompt:** blurry
+
+**DrawThings Settings (Flux.2 Klein 4b):**
+- Steps: 24
+
+### VIDEO PROMPT (Wan 2.2 High Noise 6-bit SVDQuant)
+
+**Keyframe:** The hunter stands.
+
+**Motion Description:** Slow push.
+
+**Camera:** Tracking dolly.
+
+**Wan 2.2 Prompt:** A cinematic push through ash.
+""",
+                day_number=1,
+                aspect_ratio="16:9",
+            )
+
+        self.assertTrue(scenes)
+        self.assertIn("A clash in the ash", prompt)
+        self.assertIn("BEAT ANCHOR", prompt)
+        self.assertIn("extract_scenes start", "\n".join(logs.output))
+        self.assertIn("extract_scenes end", "\n".join(logs.output))
+        self.assertIn("build_scene_prompt day=1", "\n".join(logs.output))
+        self.assertIn("parse_scene_prompts start", "\n".join(logs.output))
+        self.assertIn("parse_scene_prompts end", "\n".join(logs.output))
+
     def test_extract_scenes_scores_and_limits_paragraphs(self):
         generator = PromptGenerator(Mock())
         story = """
@@ -96,5 +152,3 @@ He advances again, cloak snapping in the storm while the Jedi parries and retrea
         self.assertEqual(parsed["negative_prompt"], NEGATIVE_PROMPT_DEFAULT)
 
 
-if __name__ == "__main__":
-    unittest.main()

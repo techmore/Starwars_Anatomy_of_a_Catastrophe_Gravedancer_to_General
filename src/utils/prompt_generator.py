@@ -3,11 +3,16 @@
 import json
 import re
 from typing import Dict, Any, List, Optional
+import time
 from src.prompts.system_prompts import (
     VISUAL_PROMPT_SYSTEM_PROMPT,
     NEGATIVE_PROMPT_DEFAULT
 )
+from src.utils.logging_utils import get_logger
 from src.utils.mlx_client import MLXClient
+
+
+LOGGER = get_logger(__name__)
 
 
 class PromptGenerator:
@@ -19,35 +24,67 @@ class PromptGenerator:
         story: str,
         max_scenes_per_day: int = 2
     ) -> List[Dict[str, Any]]:
-        """Extract key scenes from story (heuristic)."""
+        """Extract key scenes from story (heuristic, beat-aware when available)."""
+        start = time.perf_counter()
+        LOGGER.info("extract_scenes start story_chars=%s max_scenes_per_day=%s", len(story or ""), max_scenes_per_day)
         scenes = []
         # Split by day headers
         day_pattern = r"## DAY (\d+):\s*([^\n]+)(.*?)(?=## DAY \d+:|$)"
         day_matches = re.findall(day_pattern, story, re.DOTALL | re.IGNORECASE)
         
         for day_num, day_title, day_content in day_matches:
-            # Split day content into paragraphs
-            paragraphs = [p.strip() for p in day_content.split("\n\n") if p.strip()]
-            
+            beat_blocks = self._extract_beat_blocks(day_content)
+            if beat_blocks:
+                candidates = beat_blocks
+            else:
+                # Fall back to paragraphs if the story has not been beat-structured yet.
+                candidates = [
+                    {"label": "", "text": p.strip()}
+                    for p in day_content.split("\n\n")
+                    if p.strip()
+                ]
+
             # Score paragraphs by visual potential
             scored_paragraphs = []
-            for i, para in enumerate(paragraphs):
-                score = self._score_visual_potential(para)
-                scored_paragraphs.append((score, i, para))
+            for i, candidate in enumerate(candidates):
+                text = candidate["text"]
+                score = self._score_visual_potential(text)
+                if candidate.get("label"):
+                    score += 1
+                scored_paragraphs.append((score, i, candidate))
             
             # Sort by score, take top N
             scored_paragraphs.sort(reverse=True, key=lambda x: x[0])
             
-            for score, idx, para in scored_paragraphs[:max_scenes_per_day]:
+            for score, idx, candidate in scored_paragraphs[:max_scenes_per_day]:
                 if score > 5:  # Only include paragraphs with visual content
+                    beat_label = candidate.get("label", "")
+                    scene_text = candidate["text"]
                     scenes.append({
                         "day": int(day_num),
                         "paragraph_index": idx,
-                        "text": para,
+                        "beat_label": beat_label,
+                        "text": scene_text,
+                        "display_title": f"Beat: {beat_label}" if beat_label else f"Scene {idx + 1}",
                         "visual_score": score
                     })
         
+        LOGGER.info("extract_scenes end scenes=%s elapsed=%.3fs", len(scenes), time.perf_counter() - start)
         return scenes
+
+    def _extract_beat_blocks(self, day_content: str) -> List[Dict[str, str]]:
+        """Extract beat-labeled blocks from a day outline or story block."""
+        beat_pattern = r"^- Beat\s+(\d+):\s*(.*?)(?=^- Beat\s+\d+:|^- Ending hook:|$)"
+        matches = re.findall(beat_pattern, day_content, re.DOTALL | re.IGNORECASE | re.MULTILINE)
+        blocks: List[Dict[str, str]] = []
+        for beat_num, text in matches:
+            clean_text = text.strip()
+            if clean_text:
+                blocks.append({
+                    "label": f"Beat {beat_num}",
+                    "text": clean_text,
+                })
+        return blocks
     
     def _score_visual_potential(self, paragraph: str) -> int:
         """Score paragraph for visual potential (0-20)."""
@@ -83,13 +120,23 @@ class PromptGenerator:
         self,
         scene_text: str,
         day_number: int,
+        beat_label: str = "",
         aspect_ratio: str = "16:9"
     ) -> str:
         """Build prompt for image/video generation from a scene."""
+        LOGGER.info(
+            "build_scene_prompt day=%s beat_label=%s aspect_ratio=%s scene_chars=%s",
+            day_number,
+            beat_label,
+            aspect_ratio,
+            len(scene_text or ""),
+        )
+        beat_section = f"\n**BEAT ANCHOR:** {beat_label}" if beat_label else ""
         return f"""Generate detailed image and video prompts for this scene from "Gravedancer to General: Anatomy of a Catastrophe":
 
 **SCENE TEXT (Day {day_number}):**
 {scene_text}
+{beat_section}
 
 **TASK:**
 Create production-ready prompts for:
@@ -149,12 +196,22 @@ Focus on cinematic Star Wars aesthetic. Gravedancer visual: Kaleesh warrior, bon
         scene_text: str,
         day_number: int,
         model: str,
+        beat_label: str = "",
         aspect_ratio: str = "16:9",
         temperature: float = 0.7,
         system_prompt: Optional[str] = None
     ) -> Dict[str, str]:
         """Generate image and video prompts for a scene."""
-        prompt = self.build_scene_prompt(scene_text, day_number, aspect_ratio)
+        start = time.perf_counter()
+        LOGGER.info(
+            "generate_scene_prompts start day=%s model=%s beat_label=%s aspect_ratio=%s temperature=%.2f",
+            day_number,
+            model,
+            beat_label,
+            aspect_ratio,
+            temperature,
+        )
+        prompt = self.build_scene_prompt(scene_text, day_number, beat_label=beat_label, aspect_ratio=aspect_ratio)
         system = system_prompt or VISUAL_PROMPT_SYSTEM_PROMPT
         
         response = self.mlx.generate(
@@ -165,7 +222,15 @@ Focus on cinematic Star Wars aesthetic. Gravedancer visual: Kaleesh warrior, bon
             max_tokens=3000
         )
         
-        return self._parse_scene_prompts(response, day_number, aspect_ratio)
+        parsed = self._parse_scene_prompts(response, day_number, aspect_ratio)
+        LOGGER.info(
+            "generate_scene_prompts end day=%s model=%s elapsed=%.3fs response_chars=%s",
+            day_number,
+            model,
+            time.perf_counter() - start,
+            len(response or ""),
+        )
+        return parsed
     
     def _parse_scene_prompts(
         self,
@@ -174,6 +239,7 @@ Focus on cinematic Star Wars aesthetic. Gravedancer visual: Kaleesh warrior, bon
         aspect_ratio: str
     ) -> Dict[str, str]:
         """Parse LLM response into structured prompts."""
+        LOGGER.info("parse_scene_prompts start day=%s response_chars=%s", day_number, len(response or ""))
         parsed = {
             "day": day_number,
             "aspect_ratio": aspect_ratio,
@@ -230,6 +296,15 @@ Focus on cinematic Star Wars aesthetic. Gravedancer visual: Kaleesh warrior, bon
             if match:
                 parsed[key] = match.group(1).strip()
         
+        LOGGER.info(
+            "parse_scene_prompts end day=%s wide=%s medium=%s closeup=%s dramatic=%s alternate=%s",
+            day_number,
+            bool(parsed["wide"]),
+            bool(parsed["medium"]),
+            bool(parsed["closeup"]),
+            bool(parsed["dramatic"]),
+            bool(parsed["alternate"]),
+        )
         return parsed
     
     def generate_batch_prompts(
@@ -247,6 +322,7 @@ Focus on cinematic Star Wars aesthetic. Gravedancer visual: Kaleesh warrior, bon
                 prompts = self.generate_scene_prompts(
                     scene_text=scene["text"],
                     day_number=scene["day"],
+                    beat_label=scene.get("beat_label", ""),
                     model=model,
                     aspect_ratio=aspect_ratio,
                     temperature=temperature,

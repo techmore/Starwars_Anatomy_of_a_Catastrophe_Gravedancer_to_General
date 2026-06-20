@@ -35,6 +35,40 @@ class TestEpisodeStorageMetadata(unittest.TestCase):
             self.assertIn("**Target Jedi:** Vex'arii", story_text)
             self.assertNotIn("**Jedi Target:**", story_text)
 
+    def test_storage_methods_emit_useful_logs(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            storage = EpisodeStorage(tmpdir)
+            with self.assertLogs("src.utils.storage", level="INFO") as logs:
+                episode_id = storage.save_episode(
+                    title="Log Test",
+                    story="## DAY 1: Dawn\n\nThe hunt begins.",
+                    metadata={
+                        "title": "Log Test",
+                        "num_days": 2,
+                        "jedi_name": "Log Jedi",
+                        "setting": "Kalee",
+                    },
+                )
+                loaded = storage.load_episode(episode_id)
+                bundle = storage.export_episode_bundle(episode_id)
+                archive_bytes = storage.build_episode_archive_bytes(episode_id)
+                storage.list_episodes()
+
+            self.assertIsNotNone(loaded)
+            self.assertIsNotNone(bundle)
+            self.assertIsNotNone(archive_bytes)
+            joined = "\n".join(logs.output)
+            self.assertIn("save_episode start", joined)
+            self.assertIn("save_episode end", joined)
+            self.assertIn("load_episode start", joined)
+            self.assertIn("load_episode end", joined)
+            self.assertIn("export_episode_bundle start", joined)
+            self.assertIn("export_episode_bundle end", joined)
+            self.assertIn("build_episode_archive_bytes start", joined)
+            self.assertIn("build_episode_archive_bytes end", joined)
+            self.assertIn("list_episodes start", joined)
+            self.assertIn("list_episodes end", joined)
+
     def test_old_field_still_works_for_compatibility(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             storage = EpisodeStorage(tmpdir)
@@ -55,6 +89,83 @@ class TestEpisodeStorageMetadata(unittest.TestCase):
 
             loaded = storage.load_episode(episode_id)
             self.assertEqual(loaded["metadata"]["jedi_name"], "Legacy Jedi")
+
+    def test_list_episodes_defaults_prompt_counts_to_zero_without_prompts(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            storage = EpisodeStorage(tmpdir)
+            storage.save_episode(
+                title="No Prompts",
+                story="## DAY 1: Arrival\n\nA storm gathers.",
+                metadata={
+                    "title": "No Prompts",
+                    "num_days": 2,
+                    "jedi_name": "Silent Jedi",
+                    "setting": "Bespin",
+                },
+            )
+
+            episodes = storage.list_episodes()
+
+            self.assertEqual(episodes[0]["prompt_sets"], 0)
+            self.assertEqual(episodes[0]["prompt_days"], 0)
+
+    def test_list_episodes_includes_prompt_coverage_counts(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            storage = EpisodeStorage(tmpdir)
+            storage.save_episode(
+                title="Coverage Test",
+                story="## DAY 1: Dawn\n\nThe hunt begins.",
+                metadata={
+                    "title": "Coverage Test",
+                    "num_days": 3,
+                    "jedi_name": "Coverage Jedi",
+                    "setting": "Mustafar",
+                },
+                prompts={
+                    "scenes": [
+                        {"day": 1, "prompt_type": "Flux.2 Klein 4b - DrawThings"},
+                        {"day": 1, "prompt_type": "Flux.2 Klein 4b - DrawThings"},
+                        {"day": 3, "prompt_type": "Flux.2 Klein 4b - DrawThings"},
+                    ],
+                    "aspect_ratio": "16:9",
+                },
+            )
+
+            episodes = storage.list_episodes()
+
+            self.assertEqual(episodes[0]["prompt_sets"], 3)
+            self.assertEqual(episodes[0]["prompt_days"], 2)
+
+    def test_export_bundle_and_list_episodes_share_prompt_summary(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            storage = EpisodeStorage(tmpdir)
+            episode_id = storage.save_episode(
+                title="Shared Summary",
+                story="## DAY 1: Dawn\n\nThe hunt begins.",
+                metadata={
+                    "title": "Shared Summary",
+                    "num_days": 4,
+                    "jedi_name": "Shared Jedi",
+                    "setting": "Naboo",
+                },
+                prompts={
+                    "scenes": [
+                        {"day": 1, "prompt_type": "Flux.2 Klein 4b - DrawThings"},
+                        {"day": 2, "prompt_type": "Flux.2 Klein 4b - DrawThings"},
+                        {"day": 2, "prompt_type": "Flux.2 Klein 4b - DrawThings"},
+                        {"day": 4, "prompt_type": "Flux.2 Klein 4b - DrawThings"},
+                    ],
+                    "aspect_ratio": "16:9",
+                },
+            )
+
+            bundle = storage.export_episode_bundle(episode_id)
+            episodes = storage.list_episodes()
+
+            self.assertEqual(bundle["prompt_sets"], 4)
+            self.assertEqual(bundle["prompt_days"], 3)
+            self.assertEqual(episodes[0]["prompt_sets"], 4)
+            self.assertEqual(episodes[0]["prompt_days"], 3)
 
     def test_load_episode_normalizes_legacy_metadata(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -173,6 +284,8 @@ class TestEpisodeStorageMetadata(unittest.TestCase):
             self.assertEqual(bundle["metadata"]["target_jedi_name"], "Bundle Jedi")
             self.assertEqual(bundle["metadata"]["jedi_name"], "Bundle Jedi")
             self.assertEqual(bundle["prompts"]["aspect_ratio"], "21:9")
+            self.assertEqual(bundle["prompt_sets"], 1)
+            self.assertEqual(bundle["prompt_days"], 1)
             self.assertIn("metadata_json", bundle["files"])
             self.assertTrue(bundle["files"]["story_md"].endswith("story.md"))
             self.assertEqual(
@@ -306,6 +419,3 @@ class TestEpisodeStorageMetadata(unittest.TestCase):
                 manifest = json.loads(zf.read("manifest.json").decode("utf-8"))
                 self.assertFalse(manifest["files"]["prompts_json"]["exists"])
 
-
-if __name__ == "__main__":
-    unittest.main()

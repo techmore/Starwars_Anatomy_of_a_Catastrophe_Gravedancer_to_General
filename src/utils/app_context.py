@@ -9,7 +9,7 @@ class AppContext:
 
     mlx: object
     dt_client: object
-    model: str
+    mlx_model: str
     temperature: float
     storage: object
     story_gen: object
