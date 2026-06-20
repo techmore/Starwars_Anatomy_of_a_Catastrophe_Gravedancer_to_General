@@ -2,19 +2,19 @@
 
 import streamlit as st
 
-from src.components.sidebar import render_sidebar
-from src.components.tab_story import render_story_stage
-from src.components.tab_art import render_art_stage
-from src.components.tab_prompts import render_prompts_tab
-from src.components.tab_viewer import render_viewer_tab
-from src.components.tab_library import render_library_tab
-from src.components.theme import CUSTOM_CSS
-from src.utils.app_context import AppContext
-from src.utils.session_state import init_session_state
-from src.utils.prompt_generator import PromptGenerator
-from src.utils.story_generator import StoryGenerator
-
 def main():
+    from src.components.sidebar import render_sidebar
+    from src.components.tab_story import render_story_stage
+    from src.components.tab_art import render_art_stage
+    from src.components.tab_prompts import render_prompts_tab
+    from src.components.tab_viewer import render_viewer_tab
+    from src.components.tab_library import render_library_tab
+    from src.components.theme import CUSTOM_CSS
+    from src.utils.app_context import AppContext
+    from src.utils.session_state import init_session_state
+    from src.utils.prompt_generator import PromptGenerator
+    from src.utils.story_generator import StoryGenerator
+
     st.set_page_config(
         page_title="Gravedancer to General",
         page_icon="⚔️",
@@ -29,7 +29,7 @@ def main():
     context = AppContext(
         mlx=mlx,
         dt_client=dt_client,
-        model=model,
+        mlx_model=model,
         temperature=temperature,
         storage=storage,
         story_gen=StoryGenerator(mlx),
