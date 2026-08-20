@@ -82,5 +82,65 @@ class TestRunProgress(unittest.TestCase):
         self.assertEqual(_progress_bar(50), "█" * 5 + "░" * 5)
 
 
+class TestRunProgressTree(unittest.TestCase):
+    def feed(self, lines):
+        p = RunProgress()
+        for line in lines:
+            p.update(line)
+        return p
+
+    def test_sections_and_tokens_tracked(self):
+        p = RunProgress()
+        for line in [
+            "  Days:   6",
+            "Outline generated (5,210 chars) in 640.0s",
+            "  [outline] Building episode outline... | ~4,800 tokens | ~7.5 tok/s",
+            "  PHASE 2: STORY GENERATION",
+            "  [section] Day 1: expanding section 1/5",
+            "  [day-1-section-1] Streaming Day 1 section 1... | ~3,900 tokens | ~8.1 tok/s",
+            "  [section] Day 1: expanding section 2/5",
+            "  [day-1-section-2] Streaming Day 1 section 2... | ~4,100 tokens | ~8.0 tok/s",
+            "  [day] Day 1 complete (4,008 chars).",
+        ]:
+            p.update(line)
+        self.assertEqual(p.outline_tokens, 4800)
+        d1 = p.days[1]
+        self.assertTrue(d1["done"])
+        self.assertEqual(d1["tokens"][1], 3900)
+        self.assertEqual(d1["tokens"][2], 4100)
+        self.assertEqual(p.tokens_total, 4800 + 3900 + 4100)
+
+    def test_checkpoint_reuse_marks_day_done(self):
+        p = RunProgress()
+        for line in ["  Days:   6", "[checkpoint] Reusing checkpoint for Day 2."]:
+            p.update(line)
+        self.assertTrue(p.days[2]["done"])
+
+    def test_tree_renders_runtime_and_chips(self):
+        p = self.feed(LINES[:13])  # through "Extracted 30 chapters"
+        tree = p.render_tree(3725)
+        self.assertIn("runtime 1:02:05", tree)
+        self.assertIn("outline", tree)
+        self.assertIn("D1", tree)
+        self.assertIn("visual prompts", tree)
+
+    def test_tree_shows_active_chapter(self):
+        p = RunProgress()
+        for line in ["  Days:   6", "  PHASE 2: STORY GENERATION",
+                     "  [section] Day 3: expanding section 2/5",
+                     "  [day-3-section-2] ... | ~1,900 tokens | ~8.0 tok/s"]:
+            p.update(line)
+        tree = p.render_tree(65)
+        self.assertIn("ch2/5", tree)
+        self.assertIn("1.9k", tree)
+        self.assertIn("D3", tree)
+        self.assertIn("▶", tree)
+
+    def test_visual_prompt_counter_in_tree(self):
+        p = self.feed(LINES)  # full sequence incl. save
+        tree = p.render_tree(4000)
+        self.assertIn("30/30", tree)
+
+
 if __name__ == "__main__":
     unittest.main()

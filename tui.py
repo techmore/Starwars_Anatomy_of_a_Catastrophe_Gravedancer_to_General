@@ -128,18 +128,24 @@ def _progress_bar(pct: float, width: int = 10) -> str:
 
 
 class RunProgress:
-    """Derive live completion % and stage from structured pipeline output.
+    """Derive live completion %, stage tree, and token counts from pipeline output.
 
     Anchor weights: outline 10%, story 70%, banner 2%, chapter prompts 16%,
-    save 2%. Story fraction is derived from "[section] Day X: expanding
-    section Y/Z" lines so the meter moves continuously within a day.
+    save 2%. Story fraction derives from "[section] Day X: expanding section
+    Y/Z" lines; per-section token counts come from the streaming meter lines
+    ("[day-X-section-Y] ... | ~N tokens |").
     """
 
     _RE_DAYS = re.compile(r"^\s*Days:\s+(\d+)", re.MULTILINE)
     _RE_PHASE = re.compile(r"PHASE (\d):")
     _RE_OUTLINE_DONE = re.compile(r"Outline (?:generated|reused)")
     _RE_SECTION = re.compile(r"\[section\] Day (\d+): expanding section (\d+)/(\d+)")
+    _RE_SECTION_TOKENS = re.compile(
+        r"\[day-(\d+)-section-(\d+)\].*?~([\d,]+) tokens"
+    )
+    _RE_OUTLINE_TOKENS = re.compile(r"\[outline\].*?~([\d,]+) tokens")
     _RE_DAY_DONE = re.compile(r"\[day\] Day (\d+) complete")
+    _RE_CHECKPOINT_REUSE = re.compile(r"\[checkpoint\] Reusing checkpoint for Day (\d+)")
     _RE_STORY_DONE = re.compile(r"Story generated \(")
     _RE_CHAPTERS = re.compile(r"Extracted (\d+) chapters")
     _RE_BANNER_DONE = re.compile(r"Banner prompt generated")
@@ -151,10 +157,27 @@ class RunProgress:
         self.pct = 0.0
         self.stage = "starting"
         self.chapters_total = 0
+        # day -> {"sections": n, "done": bool, "tokens": {sec: tokens}}
+        self.days: Dict[int, Dict[str, Any]] = {}
+        self.outline_tokens = 0
+        self.current_day = 0
+        self.current_section = 0
+        self.chapter_prompts_done = 0
+
+    def _day(self, day: int) -> Dict[str, Any]:
+        return self.days.setdefault(day, {"sections": 0, "done": False, "tokens": {}})
+
+    @property
+    def tokens_total(self) -> int:
+        total = self.outline_tokens
+        for info in self.days.values():
+            total += sum(info["tokens"].values())
+        return total
 
     def update(self, line: str) -> bool:
         """Consume one output line; returns True when the display changed."""
-        before = (round(self.pct, 1), self.stage)
+        before = (round(self.pct, 1), self.stage, self.tokens_total,
+                  self.current_day, self.current_section, self.chapter_prompts_done)
         m = self._RE_DAYS.search(line)
         if m:
             self.num_days = int(m.group(1))
@@ -166,18 +189,33 @@ class RunProgress:
             self.stage = stage
             if floor_pct is not None:
                 self.pct = max(self.pct, floor_pct)
+        m = self._RE_OUTLINE_TOKENS.search(line)
+        if m:
+            self.outline_tokens = max(self.outline_tokens, int(m.group(1).replace(",", "")))
         if self._RE_OUTLINE_DONE.search(line):
             self.stage = "outline done"
             self.pct = max(self.pct, 10.0)
         m = self._RE_SECTION.search(line)
         if m and self.num_days:
             day, sec, sec_count = int(m.group(1)), int(m.group(2)), int(m.group(3))
+            info = self._day(day)
+            info["sections"] = sec_count
+            self.current_day, self.current_section = day, sec
             frac = ((day - 1) + (sec - 1) / max(sec_count, 1)) / self.num_days
             self.stage = f"story · day {day}/{self.num_days} · section {sec}/{sec_count}"
             self.pct = max(self.pct, 10.0 + 70.0 * min(frac, 1.0))
-        m = self._RE_DAY_DONE.search(line)
+        m = self._RE_SECTION_TOKENS.search(line)
+        if m:
+            tokens = int(m.group(3).replace(",", ""))
+            self._day(int(m.group(1)))["tokens"][int(m.group(2))] = max(
+                tokens, self._day(int(m.group(1)))["tokens"].get(int(m.group(2)), 0))
+        m = self._RE_DAY_DONE.search(line) or self._RE_CHECKPOINT_REUSE.search(line)
         if m and self.num_days:
             day = int(m.group(1))
+            info = self._day(day)
+            info["done"] = True
+            for sec in range(1, info["sections"] + 1):
+                info["tokens"].setdefault(sec, info["tokens"].get(sec, 0))
             self.stage = f"story · day {day}/{self.num_days} complete"
             self.pct = max(self.pct, 10.0 + 70.0 * min(day / self.num_days, 1.0))
         if self._RE_STORY_DONE.search(line):
@@ -192,15 +230,70 @@ class RunProgress:
         m = self._RE_CHAPTER_PROMPT.search(line)
         if m and int(m.group(2)) > 0:
             i, n = int(m.group(1)), int(m.group(2))
+            self.chapter_prompts_done = max(self.chapter_prompts_done, i)
             self.stage = f"chapter prompts {i}/{n}"
             self.pct = max(self.pct, 83.0 + 15.0 * (i / n))
         if self._RE_SAVED.search(line):
             self.stage = "saved"
             self.pct = 100.0
-        return (round(self.pct, 1), self.stage) != before
+        return (round(self.pct, 1), self.stage, self.tokens_total,
+                self.current_day, self.current_section, self.chapter_prompts_done) != before
 
     def label_suffix(self) -> str:
         return f"[{_progress_bar(self.pct)}] {self.pct:3.0f}% · {self.stage}"
+
+    def render_tree(self, elapsed_seconds: float) -> str:
+        """Multi-line stage tree for the progress panel."""
+        hh, rem = divmod(max(0, int(elapsed_seconds)), 3600)
+        mm, ss = divmod(rem, 60)
+        lines = [
+            f"[bold]{_progress_bar(self.pct)}[/] {self.pct:3.0f}%  · "
+            f"runtime {hh}:{mm:02d}:{ss:02d}  · ~{self.tokens_total:,} tok",
+        ]
+
+        def mark(done: bool, active: bool) -> str:
+            if done:
+                return "[green]✓[/]"
+            if active:
+                return "[cyan]▶[/]"
+            return "◦"
+
+        outline_active = self.stage.startswith("outline") and self.pct < 10
+        lines.append(f"{mark(self.pct >= 10, outline_active)} outline"
+                     + (f" · ~{self.outline_tokens:,} tok" if self.outline_tokens else ""))
+
+        if self.num_days:
+            chips = []
+            any_story = bool(self.days) or self.pct >= 10
+            for day in range(1, self.num_days + 1):
+                info = self.days.get(day)
+                done = bool(info and info["done"])
+                active = (day == self.current_day and not done
+                          and self.stage.startswith("story"))
+                chip = f"{mark(done, active)} D{day}"
+                if info and info["tokens"]:
+                    tok = sum(info["tokens"].values())
+                    if tok:
+                        chip += f" {tok / 1000:.1f}k"
+                elif active:
+                    chip += " …"
+                chips.append(chip)
+                if active and self.current_section:
+                    chips[-1] += f" ch{self.current_section}/{info['sections'] or '?'}"
+            story_done = self.pct >= 80
+            lines.append(f"{mark(story_done, self.stage.startswith('story'))} story "
+                         f"[{_progress_bar(min(100, max(0, (self.pct - 10) / 0.7)), 8)}]")
+            lines.append("  " + "  ".join(chips))
+
+        if self.chapters_total:
+            done = self.chapter_prompts_done >= self.chapters_total
+            active = 0 < self.chapter_prompts_done < self.chapters_total or (
+                self.stage.startswith("chapter prompts") and not done)
+            lines.append(f"{mark(done, active)} visual prompts "
+                         f"{self.chapter_prompts_done}/{self.chapters_total}")
+        saved = self.pct >= 100
+        lines.append(f"{mark(saved, self.stage.startswith('saving') and not saved)} save episode")
+        return "\n".join(lines)
 
 
 class EpisodeViewerScreen(Screen):
@@ -548,6 +641,15 @@ class GravedancerTUI(App):
         border-top: dashed $surface-lighten-1;
         padding-top: 1;
     }
+    #progress-panel {
+        height: auto;
+        max-height: 8;
+        border: round $surface;
+        padding: 0 1;
+    }
+    #progress-panel.hidden {
+        display: none;
+    }
     #runs {
         height: 8;
         border: round $surface;
@@ -565,6 +667,7 @@ class GravedancerTUI(App):
         Binding("v", "open_viewer", "Episodes"),
         Binding("o", "open_last_episode", "Last episode"),
         Binding("n", "random_seed", "Random seed"),
+        Binding("p", "toggle_progress", "Progress panel"),
     ]
 
     def __init__(self) -> None:
@@ -582,6 +685,7 @@ class GravedancerTUI(App):
         self._stop_requested: Dict[str, bool] = {}
         self._state = _load_tui_state()
         self._state_dirty = False
+        self.progress_visible = True
 
     # ── UI / messages ────────────────────────────────────────────────────
 
@@ -630,6 +734,8 @@ class GravedancerTUI(App):
             with Vertical(id="output"):
                 yield Static("Runs (live)", classes="section", id="runs-header")
                 yield OptionList(id="runs")
+                yield Static("Progress — select a run", classes="section", id="progress-header")
+                yield Static("", id="progress-panel", markup=True)
                 yield Static("Log — select a run above", classes="section")
                 yield RichLog(id="log", markup=False, wrap=True, auto_scroll=True)
         yield Footer()
@@ -724,7 +830,7 @@ class GravedancerTUI(App):
                 seed_value = int(event.value.strip())
             except ValueError:
                 return
-            if seed_value < 1:
+            if seed_value < 0:
                 return
             seed = generate_creative_seed(seed=seed_value)
             self._set_status(
@@ -931,6 +1037,29 @@ class GravedancerTUI(App):
                 pass
         self._update_runs_header()
         self._flush_state()
+        self._render_progress_panel()
+
+    def _render_progress_panel(self) -> None:
+        panel = self.query_one("#progress-panel", Static)
+        header = self.query_one("#progress-header", Static)
+        if not self.progress_visible:
+            return
+        record = self.runs.get(self.active_run_id or "")
+        if record is None:
+            panel.update("No run selected.")
+            header.update("Progress — select a run")
+            return
+        elapsed = (record.ended or time.perf_counter()) - record.started
+        panel.update(record.progress.render_tree(elapsed))
+        state_word = record.status
+        header.update(f"Progress — {record.label} [{state_word}]")
+
+    def action_toggle_progress(self) -> None:
+        self.progress_visible = not self.progress_visible
+        panel = self.query_one("#progress-panel", Static)
+        panel.add_class("hidden") if not self.progress_visible else panel.remove_class("hidden")
+        if self.progress_visible:
+            self._render_progress_panel()
 
     def _update_runs_header(self) -> None:
         counts: Dict[str, int] = {}
@@ -1156,15 +1285,15 @@ class GravedancerTUI(App):
             )
             if not clean:
                 continue
+            # Every line feeds the progress model (meters carry per-section
+            # token counts); meters then stay out of the shared log.
+            record.progress.update(clean)
             if _METER_RE.search(clean):
-                # Token meters go to the run row (activity), not the shared
-                # log — they are noise when several runs stream at once.
                 now = time.perf_counter()
                 if now - self._last_meter.get(record.run_id, 0.0) >= 1.5:
                     self._last_meter[record.run_id] = now
                     record.activity = clean.strip()
                 continue
-            record.progress.update(clean)
             self.post_message(RunLine(record.run_id, clean.strip()))
         code = proc.wait()
         record.code = code
