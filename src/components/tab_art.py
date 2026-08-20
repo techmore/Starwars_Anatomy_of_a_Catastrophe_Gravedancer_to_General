@@ -27,7 +27,7 @@ def render_art_stage(context):
     storage = context.storage
     prompt_gen = context.prompt_gen
     story_gen = context.story_gen
-    st.markdown("## 🎨 Art")
+    st.markdown("## Visual studio")
     st.markdown("Generate image prompts for each day, then render keyframes via Draw Things + Flux.2 Klein 4b.")
     st.markdown("---")
 
@@ -202,20 +202,27 @@ def _render_keyframe(dt_client, storage, ep_id, day_num, prompt, negative, aspec
 
 
 def _generate_day_prompts(prompt_gen, storage, ep_id, existing_prompts, day_num, day_content, model, aspect_ratio, temperature, replace: bool = False):
-    with st.spinner(f"Generating prompts for Day {day_num}..."):
-        try:
-            _save_day_prompts(prompt_gen, storage, ep_id, existing_prompts, day_num, day_content, model, aspect_ratio, temperature, replace=replace)
-            st.success(f"Generated Day {day_num}")
-            st.rerun()
-        except Exception as e:
-            st.error(f"Failed: {e}")
+    _run_day_prompt_generation(
+        prompt_gen, storage, ep_id, existing_prompts, day_num, day_content,
+        model, aspect_ratio, temperature, replace, "Generating", "Generated",
+    )
 
 
 def _regenerate_day_prompts(prompt_gen, storage, ep_id, existing_prompts, day_num, day_content, model, aspect_ratio, temperature, replace: bool = False):
-    with st.spinner(f"Regenerating prompts for Day {day_num}..."):
+    _run_day_prompt_generation(
+        prompt_gen, storage, ep_id, existing_prompts, day_num, day_content,
+        model, aspect_ratio, temperature, replace, "Regenerating", "Regenerated",
+    )
+
+
+def _run_day_prompt_generation(prompt_gen, storage, ep_id, existing_prompts, day_num,
+                               day_content, model, aspect_ratio, temperature,
+                               replace, progress_label, success_label):
+    """Shared generate/regenerate workflow for a day's prompt set."""
+    with st.spinner(f"{progress_label} prompts for Day {day_num}..."):
         try:
             _save_day_prompts(prompt_gen, storage, ep_id, existing_prompts, day_num, day_content, model, aspect_ratio, temperature, replace=replace)
-            st.success(f"Regenerated Day {day_num}")
+            st.success(f"{success_label} Day {day_num}")
             st.rerun()
         except Exception as e:
             st.error(f"Failed: {e}")

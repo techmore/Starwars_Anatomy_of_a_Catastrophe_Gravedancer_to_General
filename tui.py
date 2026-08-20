@@ -1,0 +1,1083 @@
+#!/usr/bin/env python3
+"""Textual TUI for the Gravedancer → General creative pipeline.
+
+Cross-platform (macOS + Linux) launcher that makes model + harness selection
+explicit and can drive multiple pipeline runs side by side — local (any
+harness) and/or remote (an SSH target, e.g. an Ubuntu box):
+
+    * pick an inference harness (rapid-mlx / LM Studio / Ollama / remote
+      OpenAI endpoint / native MLX), filtered to what this platform supports
+    * browse the models that harness actually serves (GET /v1/models for HTTP,
+      local MLX cache for native mode)
+    * optionally point at a remote host, deploy the project over rsync/SSH
+      (creating a venv if missing), and run the pipeline there
+    * every run streams live into its own shared log; select a run to inspect
+      it; stop the selected run locally (SIGTERM) or remotely (ssh pkill)
+
+Run with:  python tui.py
+"""
+
+from __future__ import annotations
+
+import os
+import platform
+import re
+import signal
+import subprocess
+import sys
+import time
+import uuid
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Dict, List, Optional
+
+from textual import work
+from textual.app import App, ComposeResult
+from textual.binding import Binding
+from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.message import Message
+from textual.screen import Screen
+from textual.widgets import (
+    Button,
+    Footer,
+    Header,
+    Input,
+    OptionList,
+    RichLog,
+    Select,
+    Static,
+)
+from textual.widgets.option_list import Option
+
+from src.utils import harness as harness_mod
+from src.utils import remoter as remoter_mod
+from src.utils.remoter import RemoteTarget
+from src.utils.settings import SETTINGS
+
+PROJECT_ROOT = Path(__file__).resolve().parent
+
+_EPISODE_ID_RE = re.compile(r"Episode saved:\s*(\S+)")
+
+_ANSI_RE = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]|\x1b\][^\x07]*\x07|\x1b\][^\x07]*\x1b\\")
+_METER_RE = re.compile(r"\|\s*~[\d,]+ tokens|\belapsed\b")
+
+_STATUS_SYMBOLS = {"running": "▶", "finished": "✓", "stopped": "■", "error": "✗"}
+
+
+@dataclass
+class RunRecord:
+    """A single pipeline run (local subprocess or SSH-attached remote run)."""
+
+    run_id: str
+    label: str
+    local: bool
+    seed: int
+    started: float
+    popen: Optional[subprocess.Popen] = None
+    target: Optional[RemoteTarget] = None
+    marker: str = ""
+    status: str = "running"
+    code: Optional[int] = None
+    ended: Optional[float] = None
+    lines: List[str] = field(default_factory=list)
+    episode_id: Optional[str] = None
+    progress: "RunProgress" = field(default_factory=lambda: RunProgress())
+
+
+class RunLine(Message):
+    def __init__(self, run_id: str, text: str) -> None:
+        super().__init__()
+        self.run_id = run_id
+        self.text = text
+
+
+class RunDone(Message):
+    def __init__(self, run_id: str, code: int) -> None:
+        super().__init__()
+        self.run_id = run_id
+        self.code = code
+
+
+def _progress_bar(pct: float, width: int = 10) -> str:
+    filled = max(0, min(width, int(pct / 100 * width)))
+    return "█" * filled + "░" * (width - filled)
+
+
+class RunProgress:
+    """Derive live completion % and stage from structured pipeline output.
+
+    Anchor weights: outline 10%, story 70%, banner 2%, chapter prompts 16%,
+    save 2%. Story fraction is derived from "[section] Day X: expanding
+    section Y/Z" lines so the meter moves continuously within a day.
+    """
+
+    _RE_DAYS = re.compile(r"^\s*Days:\s+(\d+)", re.MULTILINE)
+    _RE_PHASE = re.compile(r"PHASE (\d):")
+    _RE_OUTLINE_DONE = re.compile(r"Outline (?:generated|reused)")
+    _RE_SECTION = re.compile(r"\[section\] Day (\d+): expanding section (\d+)/(\d+)")
+    _RE_DAY_DONE = re.compile(r"\[day\] Day (\d+) complete")
+    _RE_STORY_DONE = re.compile(r"Story generated \(")
+    _RE_CHAPTERS = re.compile(r"Extracted (\d+) chapters")
+    _RE_BANNER_DONE = re.compile(r"Banner prompt generated")
+    _RE_CHAPTER_PROMPT = re.compile(r"Chapter (\d+)/(\d+)")
+    _RE_SAVED = re.compile(r"Episode saved:")
+
+    def __init__(self) -> None:
+        self.num_days = 0
+        self.pct = 0.0
+        self.stage = "starting"
+        self.chapters_total = 0
+
+    def update(self, line: str) -> bool:
+        """Consume one output line; returns True when the display changed."""
+        before = (round(self.pct, 1), self.stage)
+        m = self._RE_DAYS.search(line)
+        if m:
+            self.num_days = int(m.group(1))
+        if self._RE_PHASE.search(line):
+            phase = int(self._RE_PHASE.search(line).group(1))
+            anchors = {1: ("outline", 2.0), 2: ("story", None), 3: ("chapters", 80.5),
+                       4: ("banner", 81.0), 5: ("chapter prompts", 82.0), 6: ("saving", 98.0)}
+            stage, floor_pct = anchors.get(phase, (self.stage, None))
+            self.stage = stage
+            if floor_pct is not None:
+                self.pct = max(self.pct, floor_pct)
+        if self._RE_OUTLINE_DONE.search(line):
+            self.stage = "outline done"
+            self.pct = max(self.pct, 10.0)
+        m = self._RE_SECTION.search(line)
+        if m and self.num_days:
+            day, sec, sec_count = int(m.group(1)), int(m.group(2)), int(m.group(3))
+            frac = ((day - 1) + (sec - 1) / max(sec_count, 1)) / self.num_days
+            self.stage = f"story · day {day}/{self.num_days} · section {sec}/{sec_count}"
+            self.pct = max(self.pct, 10.0 + 70.0 * min(frac, 1.0))
+        m = self._RE_DAY_DONE.search(line)
+        if m and self.num_days:
+            day = int(m.group(1))
+            self.stage = f"story · day {day}/{self.num_days} complete"
+            self.pct = max(self.pct, 10.0 + 70.0 * min(day / self.num_days, 1.0))
+        if self._RE_STORY_DONE.search(line):
+            self.stage = "story done"
+            self.pct = max(self.pct, 80.0)
+        m = self._RE_CHAPTERS.search(line)
+        if m:
+            self.chapters_total = int(m.group(1))
+        if self._RE_BANNER_DONE.search(line):
+            self.stage = "banner done"
+            self.pct = max(self.pct, 83.0)
+        m = self._RE_CHAPTER_PROMPT.search(line)
+        if m and int(m.group(2)) > 0:
+            i, n = int(m.group(1)), int(m.group(2))
+            self.stage = f"chapter prompts {i}/{n}"
+            self.pct = max(self.pct, 83.0 + 15.0 * (i / n))
+        if self._RE_SAVED.search(line):
+            self.stage = "saved"
+            self.pct = 100.0
+        return (round(self.pct, 1), self.stage) != before
+
+    def label_suffix(self) -> str:
+        return f"[{_progress_bar(self.pct)}] {self.pct:3.0f}% · {self.stage}"
+
+
+class EpisodeViewerScreen(Screen):
+    """Browse and read saved episodes without leaving the TUI."""
+
+    TITLE = "Episode Library"
+
+    CSS = """
+    #viewer-main { height: 1fr; }
+    #ep-list-pane { width: 46; min-width: 36; max-width: 60; border-right: heavy #335577; padding: 0 1; }
+    #ep-list { height: 1fr; border: round $surface; }
+    #ep-read-pane { width: 1fr; padding: 0 1; }
+    #ep-meta { height: auto; margin-bottom: 1; color: $accent; }
+    #ep-body { height: 1fr; border: round $surface; }
+    """
+
+    BINDINGS = [
+        Binding("escape", "close_viewer", "Back"),
+        Binding("r", "refresh_episodes", "Refresh"),
+        Binding("1", "view_story", "Story"),
+        Binding("2", "view_prompts", "Prompts"),
+        Binding("3", "view_info", "Info"),
+    ]
+
+    VIEWS = ("story", "prompts", "info")
+
+    def __init__(self, highlight_episode: Optional[str] = None) -> None:
+        super().__init__()
+        self.highlight_episode = highlight_episode
+        self.view_mode = "story"
+        self._cache: Dict[str, Dict[str, Any]] = {}
+        self._current_id: Optional[str] = None
+
+    def compose(self) -> ComposeResult:
+        with Horizontal(id="viewer-main"):
+            with Vertical(id="ep-list-pane"):
+                yield Static("Episodes (newest first)", classes="section")
+                yield OptionList(id="ep-list")
+            with VerticalScroll(id="ep-read-pane"):
+                yield Static("Select an episode…", id="ep-meta", markup=True)
+                yield RichLog(id="ep-body", markup=False, wrap=True, auto_scroll=False)
+
+    def on_mount(self) -> None:
+        self._refresh_list()
+
+    def action_refresh_episodes(self) -> None:
+        self._refresh_list()
+
+    def _refresh_list(self) -> None:
+        self.query_one("#ep-list", OptionList).clear_options()
+        self.query_one("#ep-meta", Static).update("[yellow]Loading library…[/]")
+        self._load_worker()
+
+    @work(thread=True, exclusive=True)
+    def _load_worker(self) -> None:
+        from src.utils.storage import EpisodeStorage
+
+        try:
+            episodes = EpisodeStorage(str(SETTINGS.storage_path)).list_episodes()
+        except Exception as exc:
+            self.app.call_from_thread(
+                self.query_one("#ep-meta", Static).update,
+                f"[red]Could not list episodes: {exc}[/]",
+            )
+            return
+        self.app.call_from_thread(self._apply_episodes, episodes)
+
+    def _apply_episodes(self, episodes: List[dict]) -> None:
+        listing = self.query_one("#ep-list", OptionList)
+        listing.clear_options()
+        if not episodes:
+            self.query_one("#ep-meta", Static).update(
+                "[yellow]No episodes yet — run the pipeline first.[/]"
+            )
+            return
+        for ep in episodes:
+            label = f"{ep.get('created_at', '')[:10]} · {ep.get('title', 'Untitled')} ({ep.get('num_days', '?')}d)"
+            listing.add_option(Option(label, id=str(ep["id"])))
+        target_index = 0
+        if self.highlight_episode:
+            for idx, ep in enumerate(episodes):
+                if str(ep["id"]) == self.highlight_episode:
+                    target_index = idx
+                    break
+        listing.highlighted = target_index
+
+    def on_option_list_option_highlighted(self, event: OptionList.OptionHighlighted) -> None:
+        if event.option_list.id != "ep-list" or event.option.id is None:
+            return
+        self._open_episode(str(event.option.id))
+
+    @work(thread=True, exclusive=True)
+    def _open_episode(self, episode_id: str) -> None:
+        import json
+
+        base = SETTINGS.storage_path
+        meta_path = base / episode_id / "metadata.json"
+        story_path = base / episode_id / "story.md"
+        prompts_path = base / episode_id / "prompts.json"
+        try:
+            metadata = json.loads(meta_path.read_text(encoding="utf-8")) if meta_path.is_file() else {}
+            story = story_path.read_text(encoding="utf-8") if story_path.is_file() else "(no story.md found)"
+            prompts = json.loads(prompts_path.read_text(encoding="utf-8")) if prompts_path.is_file() else {}
+        except Exception as exc:
+            story = f"(could not read episode: {exc})"
+            metadata, prompts = {}, {}
+        payload = {
+            "metadata": metadata,
+            "story": story,
+            "prompts": prompts,
+            "meta_line": self._build_meta_line(episode_id, metadata, story),
+        }
+        self.app.call_from_thread(self._apply_payload, episode_id, payload)
+
+    @staticmethod
+    def _build_meta_line(episode_id: str, metadata: dict, story: str) -> str:
+        words = len(story.split())
+        model = metadata.get("model_story") or metadata.get("model") or "?"
+        jedi = metadata.get("target_jedi_name") or metadata.get("jedi_name") or "?"
+        return (
+            f"[bold]{metadata.get('title', episode_id)}[/] · Days: {metadata.get('num_days', '?')}"
+            f" · Jedi: {jedi} · Words: {words:,} · Model: {model}"
+            f" · [1 story · 2 prompts · 3 info]"
+        )
+
+    def _apply_payload(self, episode_id: str, payload: Dict[str, Any]) -> None:
+        self._cache[episode_id] = payload
+        if self._current_id != episode_id:
+            self._current_id = episode_id
+            self.view_mode = "story"
+        self.query_one("#ep-meta", Static).update(payload["meta_line"])
+        self._render_view()
+
+    def _render_view(self) -> None:
+        payload = self._cache.get(self._current_id or "")
+        body = self.query_one("#ep-body", RichLog)
+        body.clear()
+        if not payload:
+            body.write("Select an episode…")
+            return
+        if self.view_mode == "story":
+            body.write(payload["story"])
+        elif self.view_mode == "prompts":
+            body.write(self._format_prompts(payload["prompts"]))
+        else:
+            body.write(self._format_info(payload))
+
+    @staticmethod
+    def _format_prompts(prompts: Dict[str, Any]) -> str:
+        if not prompts:
+            return "(no prompts.json — generate visual prompts for this episode first)"
+        lines: List[str] = []
+        banner = prompts.get("banner") or {}
+        if banner.get("prompt"):
+            lines.append("════ BANNER PROMPT ════\n")
+            lines.append(str(banner["prompt"]).strip())
+            neg = str(banner.get("negative_prompt", "")).strip()
+            if neg:
+                lines.append(f"\n\nNegative: {neg}")
+        chapters = prompts.get("chapters") or []
+        for ch in chapters:
+            title = ch.get("chapter_title", f"Chapter {ch.get('chapter', '?')}")
+            lines.append(
+                f"\n\n════ Day {ch.get('day', '?')} · Chapter {ch.get('chapter', '?')}: {title} "
+                f"[{ch.get('aspect_ratio', '16:9')}] ════\n"
+            )
+            for key, label in (("wide", "Establishing"), ("medium", "Action"), ("closeup", "Close-up")):
+                shot = str(ch.get(key, "")).strip()
+                if shot:
+                    lines.append(f"\n• {label}: {shot}")
+        if not lines:
+            return "(prompts.json is empty)"
+        return "\n".join(lines)
+
+    @staticmethod
+    def _format_info(payload: Dict[str, Any]) -> str:
+        import json as _json
+
+        metadata = payload["metadata"]
+        story = payload["story"]
+        day_pattern = re.compile(r"^## DAY (\d+):\s*(.+)$", re.MULTILINE)
+        chapter_pattern = re.compile(r"^### Chapter (\d+):", re.MULTILINE)
+        lines = ["════ EPISODE INFO ╔══", ""]
+        for key in ("title", "created_at", "num_days", "seed_value", "pipeline",
+                    "jedi_name", "jedi_species", "jedi_rank",
+                    "jedi_lightsaber_color", "story_arc", "story_conflict",
+                    "story_resolution", "transformation_arc"):
+            if metadata.get(key):
+                lines.append(f"{key:>22}: {metadata[key]}")
+        tone = metadata.get("tone_focus")
+        if tone:
+            lines.append(f"{'tone_focus':>22}: {', '.join(tone)}")
+        days = day_pattern.findall(story)
+        if days:
+            lines.append("")
+            lines.append("── structure ──")
+            sections = chapter_pattern.findall(story)
+            per_day = max(1, round(len(sections) / max(len(days), 1))) if sections else 0
+            words_total = 0
+            blocks = re.split(r"(?=^## DAY \d+:)", story, flags=re.MULTILINE)
+            for block in blocks:
+                m = day_pattern.match(block)
+                if not m:
+                    continue
+                wc = len(block.split())
+                words_total += wc
+                lines.append(f"  {m.group(1)}: {m.group(2).strip()}  ({wc:,} words)")
+            lines.append(f"  total: {words_total:,} words · {len(days)} days · ~{per_day} chapters/day")
+        lines.append("")
+        lines.append("── raw metadata ──")
+        lines.append(_json.dumps(metadata, indent=2, ensure_ascii=False, default=str))
+        return "\n".join(lines)
+
+    def _show_episode(self, meta_line: str, story: str) -> None:
+        self.query_one("#ep-meta", Static).update(meta_line)
+        body = self.query_one("#ep-body", RichLog)
+        body.clear()
+        body.write(story)
+
+    def action_view_story(self) -> None:
+        self._switch_view("story")
+
+    def action_view_prompts(self) -> None:
+        self._switch_view("prompts")
+
+    def action_view_info(self) -> None:
+        self._switch_view("info")
+
+    def _switch_view(self, mode: str) -> None:
+        self.view_mode = mode
+        self._render_view()
+
+    def action_close_viewer(self) -> None:
+        self.app.pop_screen()
+
+
+class GravedancerTUI(App):
+    """Drive local and remote creative pipelines from one terminal."""
+
+    TITLE = "Gravedancer → General"
+    SUB_TITLE = f"structured creative pipeline · {platform.system()} {platform.machine()}"
+
+    CSS = """
+    #main {
+        height: 1fr;
+    }
+    #controls {
+        width: 52;
+        min-width: 44;
+        max-width: 68;
+        padding: 0 1;
+        border-right: heavy #335577;
+    }
+    #output {
+        width: 1fr;
+        height: 1fr;
+        padding: 0 1;
+    }
+    .section {
+        text-style: bold;
+        color: $accent;
+        margin-top: 1;
+    }
+    #harness, #seed {
+        margin-bottom: 1;
+    }
+    #models {
+        height: 1fr;
+        min-height: 5;
+        border: round $surface;
+    }
+    #remote-box {
+        margin-top: 1;
+    }
+    #custom-url {
+        margin-top: 1;
+        display: none;
+    }
+    #button-row {
+        height: auto;
+        margin-top: 1;
+    }
+    #status {
+        margin-top: 1;
+        height: auto;
+        max-height: 6;
+        color: $text;
+        border-top: dashed $surface-lighten-1;
+        padding-top: 1;
+    }
+    #runs {
+        height: 8;
+        border: round $surface;
+    }
+    #log {
+        height: 1fr;
+    }
+    """
+
+    BINDINGS = [
+        Binding("q", "quit", "Quit"),
+        Binding("r", "refresh_models", "Refresh models"),
+        Binding("ctrl+enter", "run_local", "Run local"),
+        Binding("x", "stop_run", "Stop selected"),
+        Binding("v", "open_viewer", "Episodes"),
+        Binding("o", "open_last_episode", "Last episode"),
+    ]
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.platform_key = harness_mod.detect_platform()
+        self.harness: Optional[harness_mod.Harness] = None
+        self.selected_model: Optional[str] = None
+        self.remote_models: List[str] = []
+        self.selected_remote_model: Optional[str] = None
+        self.runs: Dict[str, RunRecord] = {}
+        self.run_order: List[str] = []
+        self.active_run_id: Optional[str] = None
+        self._run_counter = 0
+        self._last_meter: Dict[str, float] = {}
+        self._stop_requested: Dict[str, bool] = {}
+
+    # ── UI / messages ────────────────────────────────────────────────────
+
+    def compose(self) -> ComposeResult:
+        yield Header(show_clock=True)
+        with Horizontal(id="main"):
+            with Vertical(id="controls"):
+                yield Static("1 · Harness (backend)", classes="section")
+                yield Select(
+                    [(h.name, h.id) for h in harness_mod.available_harnesses()],
+                    id="harness",
+                    prompt="Select harness…",
+                )
+                yield Static("2 · Model", classes="section")
+                yield OptionList(id="models")
+                yield Static("3 · Creative seed", classes="section")
+                yield Input(value="2", id="seed", type="integer", placeholder="Seed (1-… )")
+                yield Input(
+                    placeholder="Custom base URL, e.g. http://192.168.1.50:11434",
+                    id="custom-url",
+                )
+                with Vertical(id="remote-box"):
+                    yield Static("4 · Remote target (SSH)", classes="section")
+                    yield Input(placeholder="Host / IP, e.g. 192.168.1.50", id="remote-host")
+                    yield Input(value="~/gravedancer", id="remote-dir", placeholder="Remote project dir")
+                    yield Input(placeholder="SSH user (optional / ssh config)", id="remote-user")
+                    yield Input(value="http://127.0.0.1:11434", id="remote-url", placeholder="Remote inference base URL")
+                    with Horizontal():
+                        yield Button("Test SSH", id="connect", variant="primary")
+                        yield Button("Deploy", id="deploy", variant="default")
+                    yield Select([], id="remote-models", prompt="Remote models…")
+                with Horizontal(id="button-row"):
+                    yield Button("Run Local", id="run-local", variant="success")
+                    yield Button("Run Remote", id="run-remote", variant="warning")
+                    yield Button("Stop", id="stop", variant="error", disabled=True)
+                    yield Button("Refresh", id="refresh")
+                    yield Button("Health", id="health")
+                yield Static("", id="status", markup=True)
+            with Vertical(id="output"):
+                yield Static("Runs (live)", classes="section", id="runs-header")
+                yield OptionList(id="runs")
+                yield Static("Log — select a run above", classes="section")
+                yield RichLog(id="log", markup=False, wrap=True, auto_scroll=True)
+        yield Footer()
+
+    def on_mount(self) -> None:
+        available = harness_mod.available_harnesses()
+        if not available:
+            self._set_status("[red]No harness available on this platform[/]")
+            return
+        preferred = "rapid-mlx" if self.platform_key == "darwin" else "ollama"
+        if preferred not in {h.id for h in available}:
+            preferred = available[0].id
+        self.query_one("#harness", Select).value = preferred
+        self._log(f"Platform {self.platform_key} — harnesses: {', '.join(h.id for h in available)}")
+        self.set_interval(1.0, self._tick_runs)
+
+    # ── helpers ──────────────────────────────────────────────────────────
+
+    def _set_status(self, text: str) -> None:
+        self.query_one("#status", Static).update(text)
+
+    def _log(self, text: str) -> None:
+        self.query_one("#log", RichLog).write(text)
+
+    def _current_base(self) -> Optional[str]:
+        if self.harness and self.harness.id == "remote-openai":
+            return self.query_one("#custom-url", Input).value.strip() or None
+        return None
+
+    def _build_target(self) -> Optional[RemoteTarget]:
+        host = self.query_one("#remote-host", Input).value.strip()
+        if not host:
+            self._set_status("[red]Enter a remote host / IP first.[/]")
+            return None
+        target = RemoteTarget(
+            host=host,
+            user=self.query_one("#remote-user", Input).value.strip(),
+            proj_dir=self.query_one("#remote-dir", Input).value.strip() or "~/gravedancer",
+            inference_base=self.query_one("#remote-url", Input).value.strip() or "http://127.0.0.1:11434",
+        )
+        error = target.validate()
+        if error:
+            self._set_status(f"[red]Invalid remote target: {error}[/]")
+            return None
+        return target
+
+    # ── harness / model events ───────────────────────────────────────────
+
+    def on_select_changed(self, event: Select.Changed) -> None:
+        if event.select.id == "harness":
+            self.harness = harness_mod.by_id(str(event.value))
+            is_remote = self.harness.id == "remote-openai"
+            self.query_one("#custom-url", Input).display = is_remote
+            note = self.harness.note or ""
+            self._set_status(f"[bold]{self.harness.name}[/] — {note}")
+            self._load_models()
+        elif event.select.id == "remote-models":
+            self.selected_remote_model = str(event.value) if event.value else None
+
+    def on_option_list_option_highlighted(self, event: OptionList.OptionHighlighted) -> None:
+        if event.option_list.id == "models":
+            self.selected_model = str(event.option.id)
+            harness_name = self.harness.name if self.harness else "?"
+            self._set_status(f"Model: [bold cyan]{self.selected_model}[/] · harness: {harness_name}")
+        elif event.option_list.id == "runs":
+            self._select_run(str(event.option.id))
+
+    # ── model discovery (local harness) ──────────────────────────────────
+
+    def _load_models(self) -> None:
+        if self.harness is None:
+            return
+        self._models_worker(self.harness)
+
+    @work(thread=True, exclusive=True)
+    def _models_worker(self, harness: harness_mod.Harness) -> None:
+        base = self._current_base()
+        if harness.id == "remote-openai" and not base:
+            self.call_from_thread(
+                self._set_status,
+                "[yellow]Enter a base URL for the remote endpoint, then press Refresh.[/]",
+            )
+            return
+        self.call_from_thread(self._set_status, f"Loading models from {harness.name}…")
+        try:
+            choices = harness_mod.list_model_choices(harness, base)
+        except Exception as exc:
+            self.call_from_thread(
+                self._set_status, f"[red]Could not list models: {exc}[/]"
+            )
+            return
+        self.call_from_thread(self._apply_model_choices, choices)
+
+    def _apply_model_choices(self, choices: List[str]) -> None:
+        model_list = self.query_one("#models", OptionList)
+        model_list.clear_options()
+        for label in choices:
+            model_list.add_option(Option(str(label), id=str(label)))
+        if choices:
+            model_list.highlighted = 0
+            self.selected_model = str(choices[0])
+        self._set_status(f"{len(choices)} model(s) on {self.harness.name if self.harness else '?'}")
+
+    def action_refresh_models(self) -> None:
+        self._load_models()
+
+    # ── health check (local harness) ─────────────────────────────────────
+
+    def _health_check(self) -> None:
+        harness = self.harness
+        if harness is None:
+            return
+        base = self._current_base()
+        self._set_status(f"Checking {harness.name}…")
+        self._health_worker(harness, base)
+
+    @work(thread=True, exclusive=True)
+    def _health_worker(self, harness: harness_mod.Harness, base: Optional[str]) -> None:
+        result = harness_mod.health_check(harness, base)
+        models = ", ".join(result.get("models", [])[:8]) or "(none)"
+        if result["ok"]:
+            message = (
+                f"[bold green]✓ {harness.name} reachable[/] · "
+                f"{len(result.get('models', []))} model(s): {models}"
+            )
+        else:
+            message = (
+                f"[bold red]✗ {harness.name} unreachable[/] — {result.get('error')}"
+            )
+        self.call_from_thread(self._set_status, message)
+
+    # ── remote SSH actions ───────────────────────────────────────────────
+
+    def _connect_remote(self) -> None:
+        target = self._build_target()
+        if target is None:
+            return
+        self._set_status(f"Testing SSH to {target.hostspec()}…")
+        self._connect_worker(target)
+
+    @work(thread=True, exclusive=True)
+    def _connect_worker(self, target: RemoteTarget) -> None:
+        result = remoter_mod.test_connection(target)
+        if not result["ok"]:
+            self.call_from_thread(
+                self._set_status,
+                f"[bold red]✗ {target.host} unreachable[/] — {result.get('error')}",
+            )
+            return
+        info = remoter_mod.remote_info(target)
+        models = remoter_mod.remote_models(target)
+        self.call_from_thread(self._apply_remote_info, target, info, models)
+
+    def _apply_remote_info(self, target: RemoteTarget, info: dict, models: List[str]) -> None:
+        py = info.get("__PY__", "?")
+        venv = info.get("__VENV__", "?")
+        ollama = info.get("__OLLAMA__", "?")
+        self.remote_models = models
+        sel = self.query_one("#remote-models", Select)
+        sel.set_options([(m, m) for m in models])
+        self.selected_remote_model = models[0] if models else None
+        self._set_status(
+            f"[bold green]✓ {target.host} connected[/]"
+            + (f" · ollama: {ollama}" if "missing" not in str(ollama) else f" · [red]ollama missing[/]")
+            + f" · venv: {venv} · python3: {py}"
+        )
+
+    def _deploy_remote(self) -> None:
+        target = self._build_target()
+        if target is None:
+            return
+        self._set_status(f"Deploying to {target.hostspec()}…")
+        self._deploy_worker(target)
+
+    @work(thread=True, exclusive=True)
+    def _deploy_worker(self, target: RemoteTarget) -> None:
+        result = remoter_mod.deploy(target)
+        steps = " | ".join(str(s) for s in result.get("steps", []))
+        models = remoter_mod.remote_models(target)
+        self.call_from_thread(
+            self._apply_deploy_result, target, result, steps, models
+        )
+
+    def _apply_deploy_result(self, target: RemoteTarget, result: dict, steps: str, models: List[str]) -> None:
+        self.remote_models = models
+        sel = self.query_one("#remote-models", Select)
+        sel.set_options([(m, m) for m in models])
+        self.selected_remote_model = models[0] if models else None
+        if result["ok"]:
+            self._set_status(f"[bold green]✓ Deployed to {target.host}[/]\n{steps}")
+        else:
+            self._set_status(f"[bold red]✗ Deploy failed[/]\n{steps}\n{result.get('error', '')}")
+
+    # ── runs list ────────────────────────────────────────────────────────
+
+    def _new_run_id(self) -> str:
+        self._run_counter += 1
+        return f"run-{self._run_counter}"
+
+    def _register_run(self, record: RunRecord) -> None:
+        self.runs[record.run_id] = record
+        self.run_order.append(record.run_id)
+        self._stop_requested[record.run_id] = False
+        self._select_run(record.run_id)
+        self.query_one("#stop", Button).disabled = False
+
+    def _run_label(self, record: RunRecord) -> str:
+        symbol = _STATUS_SYMBOLS.get(record.status, "·")
+        if record.status == "running":
+            dur = max(0, time.perf_counter() - record.started)
+            suffix = f"  {record.progress.label_suffix()}"
+        else:
+            dur = (record.ended or record.started) - record.started
+            suffix = f"  [{_progress_bar(record.progress.pct)}] {record.progress.pct:.0f}%"
+        return f"{symbol} {record.label}  [{dur:6.0f}s]{suffix}"
+
+    def _tick_runs(self) -> None:
+        runs = self.query_one("#runs", OptionList)
+        for run_id in self.run_order:
+            record = self.runs.get(run_id)
+            if record is None:
+                continue
+            try:
+                runs.replace_option_prompt(run_id, self._run_label(record))
+            except Exception:
+                pass
+        self._update_runs_header()
+
+    def _update_runs_header(self) -> None:
+        counts: Dict[str, int] = {}
+        for record in self.runs.values():
+            counts[record.status] = counts.get(record.status, 0) + 1
+        if not self.runs:
+            header = "Runs (live)"
+        else:
+            parts = []
+            if counts.get("running"):
+                parts.append(f"[bold green]{counts['running']} running[/]")
+            if counts.get("stopping"):
+                parts.append(f"[yellow]{counts['stopping']} stopping[/]")
+            if counts.get("finished"):
+                parts.append(f"{counts['finished']} finished")
+            if counts.get("error"):
+                parts.append(f"[red]{counts['error']} failed[/]")
+            if counts.get("stopped"):
+                parts.append(f"{counts['stopped']} stopped")
+            header = "Runs (live) — " + " · ".join(parts) if parts else "Runs (live)"
+        self.query_one("#runs-header", Static).update(header)
+
+    def _select_run(self, run_id: str) -> None:
+        self.active_run_id = run_id
+        record = self.runs.get(run_id)
+        if record is None:
+            return
+        log = self.query_one("#log", RichLog)
+        log.clear()
+        for line in record.lines:
+            log.write(line)
+        if record.status == "running":
+            self._set_status(f"[bold]{record.label}[/] · {record.status} · streaming…")
+        else:
+            self._set_status(
+                f"[bold]{record.label}[/] · {record.status}"
+                + (f" (exit {record.code})" if record.code is not None else "")
+            )
+        try:
+            log.scroll_end()
+        except Exception:
+            pass
+
+    def on_run_line(self, event: RunLine) -> None:
+        record = self.runs.get(event.run_id)
+        if record is None:
+            return
+        record.lines.append(event.text)
+        if event.run_id == self.active_run_id:
+            self._log(event.text)
+
+    def on_run_done(self, event: RunDone) -> None:
+        record = self.runs.get(event.run_id)
+        if record is None:
+            return
+        if self._stop_requested.get(event.run_id):
+            record.status = "stopped"
+        elif event.code == 0:
+            record.status = "finished"
+        else:
+            record.status = "error"
+        record.ended = time.perf_counter()
+        for line in record.lines:
+            match = _EPISODE_ID_RE.search(line)
+            if match:
+                record.episode_id = match.group(1).strip("/")
+                break
+        tail = "\n".join(record.lines[-6:])
+        if record.status == "finished":
+            summary = "\n".join(
+                l.strip()
+                for l in record.lines
+                if any(m in l for m in ("TOTAL PIPELINE", "Episode saved:", "Episode ID:"))
+            )
+            hint = " · press [bold]o[/] to read it" if record.episode_id else ""
+            if event.run_id == self.active_run_id:
+                self._log(f"\n✓ Finished (exit 0).{('' )}"
+                          + (f"\n{summary}" if summary else ""))
+            self._set_status(
+                f"[bold green]Done ✓[/] {record.label}" + (f"\n{summary}" if summary else "")
+                + (f"\n[bold]o[/]: open episode · [bold]v[/]: library" if record.episode_id else "")
+            )
+        elif record.status == "stopped":
+            self._set_status(f"[yellow]Stopped[/] {record.label}")
+        else:
+            self._set_status(f"[bold red]Failed (exit {event.code})[/] {record.label}")
+        self._update_stop_button()
+        self._tick_runs()
+
+    def _update_stop_button(self) -> None:
+        any_running = any(r.status == "running" for r in self.runs.values())
+        self.query_one("#stop", Button).disabled = not any_running
+
+    # ── starting runs ────────────────────────────────────────────────────
+
+    def action_run_local(self) -> None:
+        harness = self.harness
+        model = self.selected_model
+        if harness is None or not model:
+            self._set_status("[red]Select a harness and a model first.[/]")
+            return
+        seed = self._parse_seed()
+        if seed is None:
+            return
+        ref = harness_mod.pipeline_model_ref(harness, model)
+        env = os.environ.copy()
+        env.update(harness_mod.pipeline_environment(harness, self._current_base()))
+        env["GRAVEDANCER_MODEL"] = ref
+        command = [
+            sys.executable,
+            "-u",
+            str(PROJECT_ROOT / "run_creative_pipeline.py"),
+            "--seed",
+            str(seed),
+            "--model",
+            ref,
+        ]
+        proc = subprocess.Popen(
+            command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+            env=env,
+            cwd=str(PROJECT_ROOT),
+            start_new_session=True,
+        )
+        record = RunRecord(
+            run_id=self._new_run_id(),
+            label=f"local · {harness.name} · {model} · s{seed}",
+            local=True,
+            seed=seed,
+            started=time.perf_counter(),
+            popen=proc,
+        )
+        self._register_run(record)
+        self._stream_worker(record)
+        self.query_one("#log", RichLog).clear()
+
+    def action_run_remote(self) -> None:
+        host = self.query_one("#remote-host", Input).value.strip()
+        model = self.selected_remote_model
+        seed = self._parse_seed()
+        if not host:
+            self._set_status("[red]Enter a remote host first.[/]")
+            return
+        if not model:
+            self._set_status("[red]Select a remote model first (Test/Deploy SSH).[/]")
+            return
+        target = self._build_target()
+        if target is None:
+            return
+        ref = f"lmstudio:{model}"
+        extra_env = {"MODEL_REF": ref}
+        run_token = uuid.uuid4().hex[:12]
+        proc = remoter_mod.start_remote(target, extra_env, str(seed), run_token=run_token)
+        record = RunRecord(
+            run_id=self._new_run_id(),
+            label=f"remote {target.host} · {model} · s{seed}",
+            local=False,
+            seed=seed,
+            started=time.perf_counter(),
+            popen=proc,
+            target=target,
+            marker=f"run_creative_pipeline.py --run-token {run_token}",
+        )
+        self._register_run(record)
+        self._stream_worker(record)
+        self.query_one("#log", RichLog).clear()
+
+    def _parse_seed(self) -> Optional[int]:
+        raw = self.query_one("#seed", Input).value.strip()
+        try:
+            return int(raw)
+        except ValueError:
+            self._set_status(f"[red]Invalid seed: {raw!r}[/]")
+            return None
+
+    # ── episode viewer ───────────────────────────────────────────────────
+
+    def action_open_viewer(self) -> None:
+        self.app.push_screen(EpisodeViewerScreen())
+
+    def action_open_last_episode(self) -> None:
+        finished = [self.runs[rid] for rid in self.run_order if self.runs[rid].episode_id]
+        if not finished:
+            self._set_status("[yellow]No finished run has produced an episode yet.[/]")
+            return
+        episode_id = finished[-1].episode_id
+        self._set_status(f"Opening [bold cyan]{episode_id}[/] · esc returns")
+        self.app.push_screen(EpisodeViewerScreen(highlight_episode=episode_id))
+
+    # ── streaming / stopping ─────────────────────────────────────────────
+
+    @work(thread=True)
+    def _stream_worker(self, record: RunRecord) -> None:
+        proc = record.popen
+        if proc is None or proc.stdout is None:
+            self.post_message(RunDone(record.run_id, -1))
+            return
+        while True:
+            raw_line = proc.stdout.readline()
+            if not raw_line:
+                break
+            text = _ANSI_RE.sub("", raw_line)
+            clean = next(
+                (p.rstrip() for p in reversed(re.split(r"[\r\n]+", text)) if p.strip()),
+                "",
+            )
+            if not clean:
+                continue
+            if _METER_RE.search(clean):
+                now = time.perf_counter()
+                if now - self._last_meter.get(record.run_id, 0.0) < 1.5:
+                    continue
+                self._last_meter[record.run_id] = now
+            record.progress.update(clean)
+            self.post_message(RunLine(record.run_id, clean.strip()))
+        code = proc.wait()
+        record.code = code
+        record.ended = time.perf_counter()
+        self.post_message(RunDone(record.run_id, code))
+
+    def action_stop_run(self) -> None:
+        if self.active_run_id is None:
+            return
+        self._stop_run(self.active_run_id)
+
+    def action_quit(self) -> None:
+        # Best-effort cleanup so quitting does not orphan detached pipeline
+        # processes holding unified memory. Local runs get SIGTERM (the
+        # pipeline checkpoints completed days); remote ssh clients are closed.
+        for record in self.runs.values():
+            if record.status != "running" or record.popen is None:
+                continue
+            try:
+                if record.local:
+                    os.killpg(os.getpgid(record.popen.pid), signal.SIGTERM)
+                else:
+                    record.popen.terminate()
+            except (OSError, ProcessLookupError):
+                try:
+                    record.popen.terminate()
+                except OSError:
+                    pass
+        self.exit()
+
+    def _stop_run(self, run_id: str) -> None:
+        record = self.runs.get(run_id)
+        if record is None or record.popen is None:
+            return
+        record.status = "stopping"
+        self._stop_requested[run_id] = True
+        proc = record.popen
+        try:
+            os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+        except (OSError, ProcessLookupError):
+            try:
+                proc.terminate()
+            except OSError:
+                pass
+        if record.local:
+            self._schedule_local_kill(record)
+        else:
+            self._schedule_remote_kill(record)
+
+    def _schedule_local_kill(self, record: RunRecord) -> None:
+        def escalate() -> None:
+            time.sleep(4)
+            if record.status == "stopping" and record.popen and record.popen.poll() is None:
+                try:
+                    os.killpg(os.getpgid(record.popen.pid), signal.SIGKILL)
+                except (OSError, ProcessLookupError):
+                    try:
+                        record.popen.kill()
+                    except OSError:
+                        pass
+
+        self._escalate_local(escalate)
+
+    @work(thread=True)
+    def _escalate_local(self, fn) -> None:
+        fn()
+
+    def _schedule_remote_kill(self, record: RunRecord) -> None:
+        self._remote_pkill_worker(record)
+
+    @work(thread=True)
+    def _remote_pkill_worker(self, record: RunRecord) -> None:
+        time.sleep(2)
+        if record.target is not None and record.marker:
+            remoter_mod.remote_pkill(record.target, record.marker)
+
+    # ── buttons ──────────────────────────────────────────────────────────
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        button_id = event.button.id
+        if button_id == "refresh":
+            self._load_models()
+        elif button_id == "health":
+            self._health_check()
+        elif button_id == "run-local":
+            self.action_run_local()
+        elif button_id == "run-remote":
+            self.action_run_remote()
+        elif button_id == "stop":
+            self.action_stop_run()
+        elif button_id == "connect":
+            self._connect_remote()
+        elif button_id == "deploy":
+            self._deploy_remote()
+
+
+if __name__ == "__main__":
+    GravedancerTUI().run()

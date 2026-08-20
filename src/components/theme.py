@@ -74,7 +74,123 @@ CUSTOM_CSS = """
     /* Main content container — sit on the warm surface tone with breathing room */
     .stApp > header + div, .block-container {
         background: transparent;
-        padding-top: 2rem;
+        padding-top: 1.25rem;
+        max-width: 1440px;
+        padding-left: 3rem;
+        padding-right: 3rem;
+    }
+
+    /* ===== Product-level hero ===== */
+    .sw-hero {
+        background: linear-gradient(135deg, var(--feature-bg) 0%, var(--olive-800) 100%);
+        border: 1px solid var(--olive-700);
+        border-radius: 1.25rem;
+        padding: 2.25rem 2.5rem 2rem;
+        margin: 0 0 1.25rem;
+        box-shadow: 0 16px 40px color-mix(in oklch, var(--olive-950) 18%, transparent);
+    }
+    .sw-hero .sw-eyebrow { color: var(--olive-300); }
+    .stApp .sw-hero h1,
+    .stApp .sw-hero h1 a,
+    .stApp .sw-hero h1 span {
+        color: var(--olive-50) !important;
+        font-size: clamp(2.5rem, 5vw, 4.5rem) !important;
+        margin: 0.35rem 0 0.25rem;
+        letter-spacing: -0.02em !important;
+    }
+    .sw-hero p {
+        color: var(--olive-200) !important;
+        font-size: 1rem;
+        max-width: 42rem;
+        margin: 0;
+    }
+    .sw-hero-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.55rem;
+        margin-top: 1.4rem;
+    }
+    .sw-hero-meta span {
+        color: var(--olive-100) !important;
+        border: 1px solid var(--olive-600);
+        border-radius: 999px;
+        padding: 0.28rem 0.7rem;
+        font: 600 0.68rem/1.2 var(--font-body);
+        letter-spacing: 0.12em;
+    }
+    .sw-run-summary {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1.5rem;
+        background: color-mix(in oklch, var(--olive-50) 72%, transparent);
+        border: 1px solid var(--olive-400);
+        border-radius: 0.9rem;
+        padding: 0.9rem 1.1rem;
+        margin: 1rem 0 1.5rem;
+    }
+    .sw-run-summary strong { display: block; color: var(--olive-950); font-size: 1.05rem; }
+    .sw-run-copy { color: var(--stone-600); font-size: 0.9rem; text-align: right; }
+    .sw-run-copy span { color: var(--stone-500); }
+    .sw-stepper {
+        display: flex;
+        align-items: center;
+        gap: 0.35rem;
+        margin: 0.25rem 0 1.25rem;
+        overflow-x: auto;
+        padding-bottom: 0.2rem;
+    }
+    .sw-step {
+        display: flex;
+        align-items: center;
+        gap: 0.45rem;
+        white-space: nowrap;
+        color: var(--stone-500);
+        font-size: 0.78rem;
+    }
+    .sw-step:not(:last-child)::after {
+        content: "";
+        width: 1.5rem;
+        height: 1px;
+        background: var(--olive-400);
+        margin-left: 0.35rem;
+    }
+    .sw-step span {
+        display: grid;
+        place-items: center;
+        width: 1.55rem;
+        height: 1.55rem;
+        border: 1px solid var(--olive-400);
+        border-radius: 50%;
+        color: var(--stone-500) !important;
+        font: 600 0.63rem var(--font-body);
+    }
+    .sw-step.active { color: var(--olive-950); }
+    .sw-step.active span { background: var(--accent); border-color: var(--accent); color: var(--olive-50) !important; }
+    .sw-step.done { color: var(--olive-700); }
+    .sw-step.done span { background: var(--olive-700); border-color: var(--olive-700); color: var(--olive-50) !important; }
+    @media (max-width: 760px) {
+        .stApp > header + div, .block-container { padding-left: 1rem; padding-right: 1rem; }
+        .sw-hero { padding: 1.35rem; border-radius: 1rem; }
+        .stApp .sw-hero h1 { font-size: 2.45rem !important; line-height: 1.05 !important; }
+        .sw-hero p { font-size: 0.92rem; line-height: 1.5; }
+        .sw-stepper { gap: 0.15rem; margin-bottom: 1rem; }
+        .sw-step { gap: 0.25rem; font-size: 0.68rem; }
+        .sw-step:not(:last-child)::after { width: 0.55rem; margin-left: 0.15rem; }
+        .sw-step span { width: 1.4rem; height: 1.4rem; }
+        .sw-run-summary { align-items: flex-start; flex-direction: column; gap: 0.35rem; }
+        .sw-run-copy { text-align: left; }
+        .stTabs [data-baseweb="tab-list"] { width: 100%; }
+        .stTabs [data-baseweb="tab"] {
+            flex: 1 1 0;
+            min-width: 0;
+            justify-content: center;
+            padding: 0.65em 0.25em !important;
+            font-size: 0.72rem !important;
+            white-space: nowrap;
+        }
+        .stTabs [data-baseweb="tab"] p { white-space: nowrap; margin: 0 !important; }
+        .stMarkdown p { overflow-wrap: anywhere; }
     }
 
     /* ===== Headings — the signature Instrument Serif italic display ===== */
@@ -114,6 +230,28 @@ CUSTOM_CSS = """
         background: color-mix(in oklch, var(--olive-50) 90%, transparent) !important;
         backdrop-filter: blur(8px);
         border-right: 1px solid color-mix(in oklch, var(--olive-200) 60%, transparent) !important;
+    }
+    [data-testid="stSidebar"] > div:first-child {
+        padding: 1.25rem 1rem 2rem !important;
+    }
+    [data-testid="stSidebar"] .stMarkdown h2,
+    [data-testid="stSidebar"] .stMarkdown h3 {
+        margin-top: 0.8rem !important;
+        margin-bottom: 0.35rem !important;
+    }
+    [data-testid="stSidebar"] hr {
+        margin: 0.75rem 0 !important;
+        border-color: var(--olive-300) !important;
+    }
+    [data-testid="stSidebar"] .stCaption,
+    [data-testid="stSidebar"] [data-testid="stCaptionContainer"] {
+        font-size: 0.72rem !important;
+        line-height: 1.35 !important;
+    }
+    [data-testid="stSidebar"] .stButton > button {
+        min-height: 2.1rem !important;
+        padding: 0.28rem 0.7rem !important;
+        font-size: 0.78rem !important;
     }
 
     [data-testid="stSidebar"] * {

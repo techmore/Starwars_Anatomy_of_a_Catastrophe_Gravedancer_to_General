@@ -1,8 +1,12 @@
+import tempfile
 import unittest
+from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from src.utils.logging_utils import LOG_DIR, LOG_PATH, RUN_LOG_PATH, get_run_log_name, list_log_runs, read_log_tail, start_new_run_log, write_debug_artifact
-from src.utils.models import sort_models_for_ui
+from src.utils import models
+from src.utils.models import MODEL_CATALOG, get_m1_pro_32gb_guidance, sort_models_for_ui
 from src.utils.models import DEFAULT_MODEL
 from src.utils.session_state import (
     build_episode_payload,
@@ -13,6 +17,7 @@ from src.utils.session_state import (
     merge_prompt_sets,
     build_episode_full_json_export,
     get_episode_target_jedi_name,
+    episode_selector_label,
     render_episode_prompt_archive_summary,
     save_day_prompt_sets,
     summarize_episode_prompt_archive,
@@ -24,6 +29,8 @@ from src.utils.session_state import (
     clear_story_inputs,
     hydrate_story_inputs,
     init_session_state,
+    load_episode_into_session,
+    normalize_saved_prompt_sets_for_selection,
 )
 
 
@@ -68,8 +75,51 @@ class _FakeRenderStreamlit(_FakeStreamlit):
 
 
 class TestSessionStateHelpers(unittest.TestCase):
-    def test_default_model_uses_fast_iteration_model(self):
-        self.assertEqual(DEFAULT_MODEL, "mlx-community/gemma-4-e2b-it-qat-OptiQ-4bit")
+    def test_m1_pro_guidance_marks_32b_models_as_single_workload(self):
+        guidance = get_m1_pro_32gb_guidance("mlx-community/Qwen3-32B-4bit")
+
+        self.assertIn("32 GB limit", guidance["label"])
+        self.assertIn("Draw Things", guidance["concurrency"])
+
+    def test_m1_pro_guidance_recommends_the_default_model(self):
+        guidance = get_m1_pro_32gb_guidance(DEFAULT_MODEL)
+
+        self.assertEqual(guidance["label"], "Primary story model")
+
+    def test_default_model_is_qwen38_27b_optiq(self):
+        self.assertEqual(DEFAULT_MODEL, "mlx-community/Qwen3.8-27B-OptiQ-4bit")
+
+    def test_recommended_catalog_contains_only_mlx_lm_text_models(self):
+        self.assertNotIn("mlx-community/Qwen3.5-9B-MLX-4bit", MODEL_CATALOG)
+        self.assertNotIn("google/gemma-4-E2B-it-qat-mobile-ct", MODEL_CATALOG)
+        self.assertIn("mlx-community/Qwen3-8B-4bit", MODEL_CATALOG)
+        self.assertIn("prism-ml/Bonsai-27B-mlx-1bit", MODEL_CATALOG)
+
+    def test_bonsai_guidance_is_suitable_for_the_32gb_workflow(self):
+        guidance = get_m1_pro_32gb_guidance("prism-ml/Bonsai-27B-mlx-1bit")
+
+        self.assertIn("27B-class", guidance["label"])
+        self.assertIn("Draw Things", guidance["concurrency"])
+
+    def test_local_model_listing_skips_metadata_only_downloads(self):
+        with tempfile.TemporaryDirectory() as cache:
+            cache_path = Path(cache)
+            incomplete_entry = cache_path / "models--example--incomplete"
+            (incomplete_entry / "refs").mkdir(parents=True)
+            (incomplete_entry / "snapshots" / "revision").mkdir(parents=True)
+            (incomplete_entry / "refs" / "main").write_text("revision", encoding="utf-8")
+            (incomplete_entry / "snapshots" / "revision" / "model.safetensors.incomplete").write_bytes(b"partial")
+
+            complete_entry = cache_path / "models--example--complete"
+            (complete_entry / "refs").mkdir(parents=True)
+            (complete_entry / "snapshots" / "revision").mkdir(parents=True)
+            (complete_entry / "refs" / "main").write_text("revision", encoding="utf-8")
+            (complete_entry / "snapshots" / "revision" / "model.safetensors").write_bytes(b"weights")
+
+            with patch.object(models, "MLX_CACHE_DIR", cache_path):
+                listed_ids = [repo_id for _, repo_id in models.list_local_mlx_models()]
+
+        self.assertEqual(listed_ids, ["example/complete"])
 
     def test_log_path_points_to_repo_log_txt(self):
         self.assertTrue(str(LOG_PATH).endswith("log.txt"))
@@ -112,7 +162,7 @@ class TestSessionStateHelpers(unittest.TestCase):
 
     def test_fast_iteration_model_ranks_in_recommended_order(self):
         installed = [
-            "mlx-community/Qwen3.5-4B-4bit",
+            "mlx-community/Qwen3-8B-4bit",
             "mlx-community/Qwen3.6-27B-4bit",
             "mlx-community/gemma-4-12B-it-OptiQ-4bit",
         ]
@@ -121,7 +171,7 @@ class TestSessionStateHelpers(unittest.TestCase):
 
         self.assertEqual(sorted_models[0], "mlx-community/Qwen3.6-27B-4bit")
         self.assertEqual(sorted_models[1], "mlx-community/gemma-4-12B-it-OptiQ-4bit")
-        self.assertEqual(sorted_models[2], "mlx-community/Qwen3.5-4B-4bit")
+        self.assertEqual(sorted_models[2], "mlx-community/Qwen3-8B-4bit")
 
     def test_init_session_state_populates_defaults(self):
         fake_st = _FakeStreamlit()
@@ -131,6 +181,54 @@ class TestSessionStateHelpers(unittest.TestCase):
         for key, value in SESSION_DEFAULTS.items():
             self.assertIn(key, fake_st.session_state)
             self.assertEqual(fake_st.session_state[key], value)
+
+    def test_init_session_state_copies_mutable_defaults_per_session(self):
+        first = _FakeStreamlit()
+        second = _FakeStreamlit()
+
+        init_session_state(first)
+        init_session_state(second)
+        first.session_state["current_metadata"]["title"] = "Leaked?"
+        first.session_state["story_tone"].append("Dread")
+
+        self.assertEqual(second.session_state["current_metadata"], {})
+        self.assertEqual(second.session_state["story_tone"], [])
+
+    def test_load_episode_into_session_hydrates_saved_episode(self):
+        fake_st = _FakeStreamlit()
+        episode = {
+            "metadata": {
+                "id": "episode-1",
+                "title": "Ash and Bone",
+                "num_days": 4,
+                "target_jedi_name": "Vael Tirin",
+                "jedi_species": "Togruta",
+                "jedi_rank": "Knight",
+                "jedi_lightsaber_color": "yellow",
+                "jedi_personality": "calm",
+                "jedi_why_targeted": "blocked a route",
+                "tone_focus": ["Action-heavy combat"],
+                "setting": "Kalee",
+            },
+            "story": "## DAY 1: Ashfall\n\nThe hunt begins.",
+        }
+
+        self.assertTrue(load_episode_into_session(fake_st, episode))
+        self.assertEqual(fake_st.session_state["current_episode_id"], "episode-1")
+        self.assertEqual(fake_st.session_state["current_story"], episode["story"])
+        self.assertEqual(fake_st.session_state["story_title"], "Ash and Bone")
+        self.assertEqual(fake_st.session_state["jedi_name"], "Vael Tirin")
+        self.assertEqual(fake_st.session_state["story_tone"], ["Action-heavy combat"])
+
+    def test_saved_prompt_sets_are_safe_for_scene_selection(self):
+        scenes = normalize_saved_prompt_sets_for_selection([
+            {"day": 2, "medium": "A saved action prompt"},
+            {"day": 3, "wide": "A saved establishing prompt"},
+        ])
+
+        self.assertEqual(scenes[0]["text"], "A saved action prompt")
+        self.assertEqual(scenes[0]["visual_score"], 0)
+        self.assertEqual(scenes[1]["display_title"], "Saved prompt set 2")
 
     def test_clear_story_inputs_resets_form_fields(self):
         fake_st = _FakeStreamlit()
@@ -221,6 +319,7 @@ class TestSessionStateHelpers(unittest.TestCase):
         self.assertEqual(metadata["tone_focus"], ["Action-heavy combat"])
         self.assertEqual(metadata["model"], "mock-model")
         self.assertEqual(metadata["temperature"], 0.7)
+        self.assertEqual(metadata["generation_profile"], "standard")
 
     def test_build_story_generation_context_uses_session_state(self):
         fake_st = _FakeStreamlit()
@@ -372,7 +471,14 @@ class TestSessionStateHelpers(unittest.TestCase):
     def test_get_episode_target_jedi_name_uses_canonical_fallbacks(self):
         self.assertEqual(get_episode_target_jedi_name({"target_jedi_name": "Alpha"}), "Alpha")
         self.assertEqual(get_episode_target_jedi_name({"jedi_name": "Beta"}), "Beta")
+        self.assertEqual(get_episode_target_jedi_name({"metadata": {"target_jedi_name": "Gamma"}}), "Gamma")
         self.assertEqual(get_episode_target_jedi_name({}), "Unknown")
+
+    def test_episode_selector_labels_are_unique_for_same_title_and_date(self):
+        first = {"id": "episode-20260710-120000-ashen", "title": "Ashen", "created_at": "2026-07-10T12:00:00"}
+        second = {"id": "episode-20260710-120001-ashen", "title": "Ashen", "created_at": "2026-07-10T12:00:01"}
+
+        self.assertNotEqual(episode_selector_label(first), episode_selector_label(second))
 
     def test_summarize_episode_prompt_archive_counts_sets_and_days(self):
         episode = {
@@ -500,5 +606,3 @@ class TestSessionStateHelpers(unittest.TestCase):
         self.assertEqual(summary["episodes_with_prompts"], 0)
         self.assertEqual(summary["total_prompt_days"], 0)
         self.assertEqual(summary["covered_episodes"], 0)
-
-

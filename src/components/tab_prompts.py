@@ -7,6 +7,8 @@ from src.utils.prompt_generator import PromptGenerator
 from src.utils.story_generator import StoryGenerator
 from src.utils.storage import EpisodeStorage
 from src.utils.logging_utils import start_new_run_log
+from src.utils.session_state import episode_selector_label, normalize_saved_prompt_sets_for_selection
+from src.components.ui import preformatted_html
 
 
 def render_prompts_tab(
@@ -20,7 +22,7 @@ def render_prompts_tab(
     model: str = context.mlx_model
     temperature: float = context.temperature
     
-    st.markdown("## Scene Prompts & Visual Pipeline")
+    st.markdown("## Prompt studio")
     st.markdown('<div class="blood-accent">Extract key scenes. Generate Draw Things + Flux.2 Klein 4b image prompts. Generate Wan 2.2 High Noise 6-bit SVDQuant video prompts.</div>', unsafe_allow_html=True)
     
     # Load episode
@@ -30,7 +32,7 @@ def render_prompts_tab(
         st.info("No episodes available. Generate one in the Story tab.")
         return
     
-    ep_options = {f"{ep['title']} ({ep['created_at'][:10]})": ep['id'] for ep in episodes}
+    ep_options = {episode_selector_label(ep): ep['id'] for ep in episodes}
     selected_label = st.selectbox("Select Episode", list(ep_options.keys()), key="prompts_select")
     selected_id = ep_options[selected_label]
     
@@ -80,18 +82,22 @@ def render_prompts_tab(
     
     prompt_payload = episode.get("prompts") or {}
     saved_scenes = prompt_payload.get("scenes", []) if isinstance(prompt_payload, dict) else []
+    if not isinstance(saved_scenes, list):
+        saved_scenes = []
+    extracted_by_episode = st.session_state.setdefault("extracted_scenes_by_episode", {})
+    generated_by_episode = st.session_state.setdefault("generated_prompts_by_episode", {})
 
     # Auto-extract scenes
     if st.button("Extract Key Scenes", type="primary"):
         with st.spinner("Analyzing story for visual potential..."):
             scenes = prompt_gen.extract_scenes(story, max_scenes_per_day=max_scenes)
-            st.session_state["extracted_scenes"] = scenes
+            extracted_by_episode[selected_id] = scenes
             st.success(f"Extracted {len(scenes)} key scenes.")
 
-    scenes = st.session_state.get("extracted_scenes", [])
+    scenes = extracted_by_episode.get(selected_id, [])
     if use_existing and saved_scenes and not scenes:
-        scenes = saved_scenes
-        st.session_state["extracted_scenes"] = scenes
+        scenes = normalize_saved_prompt_sets_for_selection(saved_scenes)
+        extracted_by_episode[selected_id] = scenes
         st.info(f"Loaded {len(scenes)} saved scene prompt set(s) from the episode library.")
     
     if not scenes:
@@ -110,7 +116,7 @@ def render_prompts_tab(
             if scene.get("beat_label"):
                 st.caption(f"Beat anchor: {scene['beat_label']}")
             st.markdown(f"```\n{scene['text']}\n```")
-            if st.checkbox(f"Include this scene", value=True, key=f"scene_select_{i}"):
+            if st.checkbox(f"Include this scene", value=True, key=f"scene_select_{selected_id}_{i}"):
                 selected_scenes.append(scene)
     
     st.markdown("---")
@@ -152,7 +158,7 @@ def render_prompts_tab(
                     temperature=temperature,
                     system_prompt=visual_system_prompt
                 )
-                st.session_state["generated_prompts"] = results
+                generated_by_episode[selected_id] = results
                 
                 # Save to episode
                 existing_prompt_sets = list((episode.get("prompts") or {}).get("scenes", []))
@@ -171,7 +177,7 @@ def render_prompts_tab(
                 st.error(f"Generation failed: {e}")
                 return
     
-    results = st.session_state.get("generated_prompts", [])
+    results = generated_by_episode.get(selected_id, [])
     
     if not results:
         return
@@ -258,7 +264,7 @@ def render_prompts_tab(
             
             # Raw response
             with st.expander("Raw LLM Response"):
-                st.markdown(f"<pre class='pre-wrap'>{result.get('raw_response', '')}</pre>", unsafe_allow_html=True)
+                st.markdown(preformatted_html(result.get("raw_response", "")), unsafe_allow_html=True)
     
     # Draw Things workflow notes
     st.markdown("---")

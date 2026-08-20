@@ -1,11 +1,22 @@
 import unittest
 from unittest.mock import Mock
 
-from src.utils.prompt_generator import PromptGenerator
+from src.utils.prompt_generator import PromptGenerator, VISUAL_PROMPT_MAX_TOKENS
 from src.prompts.system_prompts import NEGATIVE_PROMPT_DEFAULT
 
 
 class TestPromptGenerator(unittest.TestCase):
+    def test_scene_prompt_generation_uses_bounded_visual_output_budget(self):
+        client = Mock()
+        client.generate.return_value = ""
+
+        PromptGenerator(client).generate_scene_prompts(
+            scene_text="A storm crosses the ruined shrine.",
+            day_number=1,
+            model="mock-model",
+        )
+
+        self.assertEqual(client.generate.call_args.kwargs["max_tokens"], VISUAL_PROMPT_MAX_TOKENS)
     def test_parse_scene_prompts_extracts_all_sections(self):
         generator = PromptGenerator(Mock())
         response = """
@@ -141,6 +152,15 @@ He advances again, cloak snapping in the storm while the Jedi parries and retrea
         self.assertIn("ignites", scenes[0]["text"].lower())
         self.assertIn("advances", scenes[1]["text"].lower())
 
+    def test_extract_scenes_accepts_a_day_body_with_explicit_day_number(self):
+        generator = PromptGenerator(Mock())
+        day_body = "The Gravedancer ignites his blade and charges through the ruins, sparks and ash flying around his mask."
+
+        scenes = generator.extract_scenes(day_body, max_scenes_per_day=1, day_number=4)
+
+        self.assertEqual(len(scenes), 1)
+        self.assertEqual(scenes[0]["day"], 4)
+
     def test_default_negative_prompt_is_preserved_when_absent(self):
         generator = PromptGenerator(Mock())
         parsed = generator._parse_scene_prompts(
@@ -151,4 +171,70 @@ He advances again, cloak snapping in the storm while the Jedi parries and retrea
 
         self.assertEqual(parsed["negative_prompt"], NEGATIVE_PROMPT_DEFAULT)
 
+    def test_chapter_prompt_parser_accepts_the_requested_numbered_headings(self):
+        client = Mock()
+        client.generate.return_value = """
+**1. Establishing Shot:**
+A ruined citadel under a storm.
 
+**2. Character / Action Shot:**
+The Gravedancer crosses the bridge with blade drawn.
+
+**3. Dramatic / Close-up Shot:**
+Rain runs down the fractures in his mask.
+
+**Negative Prompt:** blurry, text, watermark
+"""
+        parsed = PromptGenerator(client).generate_chapter_prompt(
+            chapter_text="A duel begins.", day_number=1, chapter_index=1,
+            chapter_title="Arrival", model="mock-model",
+        )
+
+        self.assertIn("ruined citadel", parsed["wide"])
+        self.assertIn("blade drawn", parsed["medium"])
+        self.assertIn("fractures", parsed["closeup"])
+        self.assertEqual(parsed["negative_prompt"], "blurry, text, watermark")
+
+    def test_chapter_prompt_parser_accepts_markdown_headings(self):
+        client = Mock()
+        client.generate.return_value = """
+### 1. Establishing Shot
+The observatory vanishes beneath the storm.
+### 2. Character / Action Shot
+Qymaen crosses a broken bridge.
+### 3. Dramatic / Close-up Shot
+Water runs across the mask's cracks.
+### Negative Prompt
+blurry, text
+"""
+        parsed = PromptGenerator(client).generate_chapter_prompt(
+            "A storm.", 1, 1, "Arrival", "mock-model"
+        )
+
+        self.assertIn("observatory", parsed["wide"])
+        self.assertIn("broken bridge", parsed["medium"])
+        self.assertIn("mask", parsed["closeup"])
+        self.assertEqual(parsed["negative_prompt"], "blurry, text")
+
+    def test_chapter_prompt_parser_accepts_gemma_scene_wrappers(self):
+        client = Mock()
+        client.generate.return_value = """
+### Scene 1: Flooded Crossing
+#### 1. Establishing Shot (Wide/Establishing)
+**Prompt:** A drowned observatory under a violent storm.
+### Scene 2: The Pursuit
+#### 2. Character / Action Shot (Medium/Action)
+**Prompt:** Qymaen crosses a broken bridge with spear raised.
+### Scene 3: The Mask
+#### 3. Dramatic / Close-up Shot (Close-up)
+**Prompt:** Rain tracks across the mask's cracked bone surface.
+### Negative Prompt
+blurry, text
+"""
+        parsed = PromptGenerator(client).generate_chapter_prompt(
+            "A storm.", 1, 1, "Arrival", "mock-model"
+        )
+
+        self.assertIn("drowned observatory", parsed["wide"])
+        self.assertIn("broken bridge", parsed["medium"])
+        self.assertIn("cracked bone", parsed["closeup"])

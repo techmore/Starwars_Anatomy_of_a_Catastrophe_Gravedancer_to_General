@@ -1,17 +1,72 @@
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from src.utils.prompt_generator import PromptGenerator
 from src.utils.storage import EpisodeStorage
 from src.utils.streaming_ui import STREAM_PANEL_KEYS, build_progress_state, build_stream_runtime, finalize_stream_state, render_cached_outline_banner, render_stream_update, reset_stream_panels
-from src.utils.story_generator import StoryGenerator
+from src.utils.story_generator import OUTLINE_MAX_TOKENS, SECTION_MAX_TOKENS, GenerationCancelled, StoryGenerator, outline_token_budget
 from src.utils.concepts import build_concept_context_prompt, build_concept_extraction_prompt, try_parse_full_episode_concept, VALID_TONES
-from src.utils.prompt_schema import STORY_MULTI_PASS_RULES, STORY_STRUCTURE_REQUIREMENTS, validate_outline_structure, validate_story_prompt_inputs
+from src.utils.prompt_schema import STORY_MULTI_PASS_RULES, STORY_STRUCTURE_REQUIREMENTS, validate_outline_quality, validate_outline_structure, validate_story_prompt_inputs
+from scripts.run_spec_pilot import PILOT_JEDI_FALLBACK, _complete_visual_variants, _dedupe_concept_text
 
 
 class TestWorkflowSmoke(unittest.TestCase):
+    def test_outline_budget_is_bounded_for_local_pilot_runs(self):
+        self.assertLessEqual(OUTLINE_MAX_TOKENS, 5000)
+        self.assertGreaterEqual(SECTION_MAX_TOKENS, 4000)
+
+    def test_outline_budget_scales_for_longer_episodes(self):
+        self.assertEqual(outline_token_budget(3), OUTLINE_MAX_TOKENS)
+        self.assertEqual(outline_token_budget(5), 7000)
+        self.assertEqual(outline_token_budget(8), 8000)
+
+    def test_generation_cancellation_sentinel_stops_before_model_request(self):
+        story_gen = StoryGenerator(Mock())
+        with patch.dict("os.environ", {"GRAVEDANCER_CANCEL_FILE": "/tmp/gravedancer-cancel-sentinel"}):
+            with patch("os.path.isfile", return_value=True):
+                with self.assertRaises(GenerationCancelled):
+                    story_gen.generate_episode_story_multi_pass(
+                        model="mock-model",
+                        title="Cancelled",
+                        num_days=1,
+                        jedi_details={"name": "Vael Tirin"},
+                        setting="Ryloth frontier",
+                        tone_focus=["dread"],
+                        additional_instructions="",
+                        outline="## EPISODE ARC\nArc\n\n## DAY 1: Ashfall\n- Purpose: Establish the hunt.\n- Chapter 1: Beat 1: A. Beat 2: B. Beat 3: C. Beat 4: D.\n- Chapter 2: Beat 1: A. Beat 2: B. Beat 3: C. Beat 4: D.\n- Chapter 3: Beat 1: A. Beat 2: B. Beat 3: C. Beat 4: D.\n- Chapter 4: Beat 1: A. Beat 2: B. Beat 3: C. Beat 4: D.\n- Chapter 5: Beat 1: A. Beat 2: B. Beat 3: C. Beat 4: D.\n- Ending hook: Continue.",
+                    )
+
+    def test_outline_quality_rejects_repeated_beats(self):
+        repeated = "\n".join(
+            f"- Chapter {chapter}:\n"
+            "  - Beat 1: Qymaen enters the chamber.\n"
+            "  - Beat 2: The Jedi raises the shield.\n"
+            "  - Beat 3: Qymaen attacks the shield.\n"
+            "  - Beat 4: Qymaen retreats to the chamber."
+            for chapter in range(1, 6)
+        )
+        outline = f"## EPISODE ARC\nThe hunt changes him.\n\n## DAY 1: Ashfall\n- Purpose: Escalate.\n{repeated}\n- Ending hook: The storm speaks."
+        errors = validate_outline_quality(outline, expected_days=1)
+        self.assertTrue(any("repeats" in error for error in errors))
+
+    def test_pilot_concept_context_deduplicates_repeated_model_paragraphs(self):
+        text = "One paragraph.\n\nOne paragraph.\n\nA distinct paragraph."
+        self.assertEqual(_dedupe_concept_text(text), "One paragraph.\n\nA distinct paragraph.")
+        self.assertEqual(PILOT_JEDI_FALLBACK["name"], "Sura Venn")
+
+    def test_visual_prompt_recovery_fills_missing_variants(self):
+        visual, recovered = _complete_visual_variants(
+            {"wide": "existing wide shot"},
+            {"text": "Qymaen crosses the flooded refinery floor."},
+        )
+
+        self.assertTrue(recovered)
+        self.assertEqual(visual["wide"], "existing wide shot")
+        self.assertTrue(all(visual.get(key) for key in ("wide", "medium", "closeup", "dramatic", "alternate")))
+        self.assertIn("flooded refinery floor", visual["dramatic"])
+
     def test_build_stream_runtime_returns_widgets_and_state(self):
         class _Streamlit:
             def __init__(self):
@@ -26,7 +81,12 @@ class TestWorkflowSmoke(unittest.TestCase):
 
         self.assertEqual(set(runtime.keys()), {"widgets", "progress_state"})
         self.assertEqual(set(runtime["widgets"].keys()), set(STREAM_PANEL_KEYS))
-        self.assertEqual(runtime["progress_state"], {"events": [], "current_stage": "Idle"})
+        self.assertEqual(runtime["progress_state"]["events"], [])
+        self.assertEqual(runtime["progress_state"]["current_stage"], "Idle")
+        self.assertIn("started_at", runtime["progress_state"])
+        self.assertEqual(runtime["progress_state"]["chars_generated"], 0)
+        self.assertEqual(runtime["progress_state"]["approx_tokens"], 0)
+        self.assertEqual(runtime["progress_state"]["target_tokens"], 0)
 
     def test_render_stream_update_uses_friendly_stage_labels(self):
         class _Widget:
@@ -38,10 +98,14 @@ class TestWorkflowSmoke(unittest.TestCase):
 
         widgets = {key: _Widget() for key in STREAM_PANEL_KEYS}
         progress_state = build_progress_state()
+        progress_state["target_tokens"] = 100
 
         render_stream_update("day-1-continuity", "Cleaning", "Day prose.", widgets, progress_state)
 
         self.assertTrue(any("**Current Phase:** Continuity" in call for call in widgets["stage_label"].calls))
+        self.assertTrue(any("**Target:**" in call and "**ETA:**" in call for call in widgets["progress_log"].calls))
+        self.assertEqual(progress_state["chars_generated"], len("Day prose."))
+        self.assertEqual(progress_state["approx_tokens"], 2)
 
     def test_render_stream_update_routes_cached_outline_notice(self):
         class _Widget:
@@ -101,7 +165,11 @@ class TestWorkflowSmoke(unittest.TestCase):
         reset_stream_panels(widgets, progress_state)
 
         self.assertTrue(all(widget.cleared == 1 for widget in widgets.values()))
-        self.assertEqual(progress_state, {"events": [], "current_stage": "Idle"})
+        self.assertEqual(progress_state["events"], [])
+        self.assertEqual(progress_state["current_stage"], "Idle")
+        self.assertEqual(progress_state["chars_generated"], 0)
+        self.assertEqual(progress_state["approx_tokens"], 0)
+        self.assertIn("started_at", progress_state)
 
     def test_finalize_stream_state_marks_complete(self):
         class _Widget:
@@ -276,19 +344,42 @@ The hunt unfolds across two days — first contact, then ambush.
 
 ## DAY 1: Ashfall
 - Purpose: Establish the hunt
-- Beat 1: The Gravedancer arrives at a smoking outpost. He reads the signs and realizes the Jedi is close.
-- Beat 2: A trap is sprung deliberately. The fight reveals the Jedi's tactics and philosophy.
-- Beat 3: Night falls. The Jedi watches from the edge of camp — a silent challenge.
+- Chapter 1: Beat 1: The Gravedancer arrives at a smoking outpost. He reads the signs and realizes the Jedi is close. Beat 2: A trap is sprung deliberately. Beat 3: The fight reveals the Jedi's tactics and philosophy. Beat 4: Night falls and the Jedi watches from the edge of camp — a silent challenge.
+- Chapter 2: Beat 1: The nearest ridge is swept for tracks. Beat 2: Qymaen finds a damaged relay and decodes the route ahead. Beat 3: A droid scout is buried in ash. Beat 4: The terrain confirms the Jedi is baiting him.
+- Chapter 3: Beat 1: The camp repositions to higher ground. Beat 2: Qymaen studies the Jedi's choices. Beat 3: The wind shifts and a hidden passage becomes clear. Beat 4: He commits to the chase.
+- Chapter 4: Beat 1: A skirmish erupts at the outpost edge. Beat 2: The Jedi tests Qymaen's patience rather than his blade. Beat 3: The exchange ends without victory. Beat 4: Both sides withdraw with new information.
+- Chapter 5: Beat 1: The day closes with ash settling over the dead. Beat 2: Qymaen marks the pattern in the dust. Beat 3: The Jedi's signal fades into the distance. Beat 4: A new trail opens.
 - Ending hook: A signal in the ash.
 
 ## DAY 2: Ambush
 - Purpose: Escalate the trap into a decisive confrontation
-- Beat 1: The chase narrows to a canyon. Qymaen realizes the Jedi is herding him.
-- Beat 2: The ambush is sprung. Combat unfolds through ruined structures with tactical depth.
-- Beat 3: The Jedi is cornered. A final choice determines whether this ends in death or escape.
+- Chapter 1: Beat 1: The chase narrows to a canyon. Qymaen realizes the Jedi is herding him. Beat 2: The ambush is sprung. Combat unfolds through ruined structures with tactical depth. Beat 3: The Jedi is cornered. Beat 4: A final choice determines whether this ends in death or escape. Beat 5: The canyon mouth collapses and the path forward becomes one-way.
+- Chapter 2: Beat 1: Qymaen climbs the ridge to regain the high ground. Beat 2: The Jedi uses the rockfall as cover. Beat 3: The terrain becomes a weapon. Beat 4: The hunt turns physical and immediate.
+- Chapter 3: Beat 1: A wounded droid squad blocks the retreat path. Beat 2: The Jedi exploits the confusion. Beat 3: Qymaen chooses to press forward. Beat 4: The canyon becomes a trap for both of them.
+- Chapter 4: Beat 1: The duel breaks into short, brutal exchanges. Beat 2: The Jedi reveals his philosophy. Beat 3: Qymaen answers with tactical cruelty. Beat 4: Neither side yields.
+- Chapter 5: Beat 1: The canyon spits the survivors out into open ground. Beat 2: The Jedi escapes by sacrificing position. Beat 3: Qymaen takes a new wound. Beat 4: The next phase of the hunt begins.
 - Ending hook: The Jedi turns back."""
         errors = validate_outline_structure(outline, expected_days=2)
         self.assertEqual(errors, [])
+
+    def test_validate_outline_structure_accepts_nested_beats(self):
+        chapters = "\n".join(
+            f"- Chapter {chapter}:\n"
+            "  - Beat 1: Arrival.\n"
+            "  - Beat 2: Discovery.\n"
+            "  - Beat 3: Reversal.\n"
+            "  - Beat 4: Hook."
+            for chapter in range(1, 6)
+        )
+        outline = f"""## EPISODE ARC
+The hunt begins.
+
+## DAY 1: Ashfall
+- Purpose: Establish the hunt
+{chapters}
+- Ending hook: A signal in the ash."""
+
+        self.assertEqual(validate_outline_structure(outline, expected_days=1), [])
 
     def test_validate_outline_structure_rejects_missing_hooks(self):
         outline = """## EPISODE ARC
@@ -296,11 +387,23 @@ A single day hunt.
 
 ## DAY 1: Ashfall
 - Purpose: Establish the hunt
-- Beat 1: The Gravedancer arrives at a smoking outpost with ash falling like snow.
-- Beat 2: A trap is discovered in the ruins. Qymaen reads the signs and adjusts.
-- Beat 3: The Jedi appears at dusk, watching. A silent challenge is issued."""
+- Chapter 1: Beat 1: The Gravedancer arrives at a smoking outpost with ash falling like snow. Beat 2: A trap is discovered in the ruins. Beat 3: Qymaen reads the signs and adjusts. Beat 4: The Jedi appears at dusk, watching. Beat 5: A silent challenge is issued.
+- Chapter 2: Beat 1: The camp tightens its perimeter. Beat 2: Droids scan the perimeter. Beat 3: The outpost holds its breath. Beat 4: The fire goes out.
+- Chapter 3: Beat 1: Qymaen probes the terrain. Beat 2: He finds nothing but ash. Beat 3: The silence becomes suspicious. Beat 4: He commits to pursuit.
+- Chapter 4: Beat 1: The wind shifts. Beat 2: The Jedi remains unseen. Beat 3: A false trail leads nowhere. Beat 4: The trap feels deliberate.
+- Chapter 5: Beat 1: Night closes in. Beat 2: The hunt pauses. Beat 3: The shadow at the edge of the outpost does not move. Beat 4: The final trail goes cold."""
         errors = validate_outline_structure(outline, expected_days=1)
         self.assertTrue(any("missing Ending hook" in err for err in errors))
+
+    def test_validate_outline_structure_rejects_missing_or_misnumbered_days(self):
+        errors = validate_outline_structure("## DAY 1: Ashfall\n- Purpose: Setup", expected_days=2)
+
+        self.assertTrue(any("missing DAY 2 header" in err for err in errors))
+
+    def test_parse_days_ignores_embedded_day_headings(self):
+        story = "## DAY 1: Ashfall\n\nA chapter mentions ## DAY 2: only in dialogue."
+
+        self.assertEqual(len(StoryGenerator(Mock()).parse_days(story)), 1)
 
     def test_concept_context_prompt_is_self_contained_prose(self):
         prompt = build_concept_context_prompt(["Alpha", "Beta"])
@@ -444,15 +547,18 @@ Storyboard frame with harsh contrast and crimson atmosphere.
                 "\n",
                 "## DAY 1: Ashfall\n",
                 "- Purpose: Establish the hunt\n",
-                "- Beat 1: The Gravedancer lands at a smoking outpost. He reads the signs of a recent skirmish and realizes the Jedi is close. Tension builds as ash falls like snow.\n",
-                "- Beat 2: Qymaen tracks through the ruins. A flash of movement — a trap. He springs it deliberately to gauge the Jedi's tactics. The fight is brief but revealing.\n",
-                "- Beat 3: Night falls. The Jedi appears at the edge of camp — not to attack, but to watch. A silent challenge. Qymaen understands: this hunt will be different.\n",
+                "- Chapter 1: Beat 1: The Gravedancer lands at a smoking outpost. Beat 2: He reads the signs of a recent skirmish and realizes the Jedi is close. Beat 3: Tension builds as ash falls like snow. Beat 4: He moves into the ruins.\n",
+                "- Chapter 2: Beat 1: Qymaen tracks through the ruins. Beat 2: A flash of movement — a trap. Beat 3: He springs it deliberately to gauge the Jedi's tactics. Beat 4: The fight is brief but revealing.\n",
+                "- Chapter 3: Beat 1: Night falls. Beat 2: The Jedi appears at the edge of camp — not to attack, but to watch. Beat 3: A silent challenge. Beat 4: Qymaen understands: this hunt will be different.\n",
+                "- Chapter 4: Beat 1: The droids sweep the perimeter. Beat 2: The outpost burns lower. Beat 3: Qymaen studies the shadow line. Beat 4: The Jedi leaves a signal in the ash.\n",
+                "- Chapter 5: Beat 1: Qymaen marks the trail. Beat 2: The camp hardens. Beat 3: He commits to the next ridge. Beat 4: The signal fades, pulling him onward.\n",
                 "- Ending hook: A lightsaber ignites in the distance — not a threat, an invitation.",
             ]),
             iter(["Day 1 section 1 prose."]),
             iter(["Day 1 section 2 prose."]),
             iter(["Day 1 section 3 prose."]),
             iter(["Day 1 continuity prose."]),
+            iter(["Day 1 section 5 prose."]),
         ]
         story_gen = StoryGenerator(ollama)
         progress_events = []
@@ -480,7 +586,68 @@ Storyboard frame with harsh contrast and crimson atmosphere.
         self.assertTrue(any(stage == "outline" for stage, _, _ in progress_events))
         self.assertTrue(any(stage == "day" for stage, _, _ in progress_events))
         self.assertTrue(any(stage == "section" for stage, _, _ in progress_events))
-        self.assertTrue(any(stage == "continuity" for stage, _, _ in progress_events))
         self.assertTrue(any(text for _, _, text in progress_events))
+        max_tokens = [call.kwargs["max_tokens"] for call in ollama.generate_stream.call_args_list]
+        self.assertIn(OUTLINE_MAX_TOKENS, max_tokens)
+        self.assertIn(SECTION_MAX_TOKENS, max_tokens)
 
+    def test_multi_pass_rebuilds_invalid_cached_outline(self):
+        ollama = Mock()
+        story_gen = StoryGenerator(ollama)
+        rebuilt_outline = (
+            "## EPISODE ARC\nA recovered arc.\n\n## DAY 1: Ashfall\n"
+            "- Purpose: Establish the hunt.\n"
+            "- Chapter 1: Beat 1: Arrival. Beat 2: Tracks. Beat 3: Tension. Beat 4: Move.\n"
+            "- Chapter 2: Beat 1: Pursuit. Beat 2: Trap. Beat 3: Counter. Beat 4: Escape.\n"
+            "- Chapter 3: Beat 1: Contact. Beat 2: Threat. Beat 3: Choice. Beat 4: Retreat.\n"
+            "- Chapter 4: Beat 1: Camp. Beat 2: Signal. Beat 3: Watch. Beat 4: Dawn.\n"
+            "- Chapter 5: Beat 1: Choice. Beat 2: Departure. Beat 3: Cost. Beat 4: Trail.\n"
+            "- Ending hook: The trail continues."
+        )
+        ollama.generate_stream.side_effect = [[rebuilt_outline]] + [["Recovered prose."]] * 5
 
+        story = story_gen.generate_episode_story_multi_pass(
+            model="mock-model",
+            title="Cached Outline Test",
+            num_days=1,
+            jedi_details={"name": "Vael Tirin"},
+            setting="Ryloth frontier",
+            tone_focus=["dread"],
+            additional_instructions="",
+            outline="## DAY 1: Missing Arc and Chapters",
+        )
+
+        self.assertIn("## DAY 1: Ashfall", story)
+        self.assertEqual(ollama.generate_stream.call_count, 6)
+
+    def test_multi_pass_reuses_checkpointed_day_without_model_call(self):
+        ollama = Mock()
+        story_gen = StoryGenerator(ollama)
+        outline = (
+            "## EPISODE ARC\nA test arc.\n\n## DAY 1: Ashfall\n"
+            "- Purpose: Establish the hunt.\n"
+            "- Chapter 1: Beat 1: Arrival. Beat 2: Tracks. Beat 3: Tension. Beat 4: Move.\n"
+            "- Chapter 2: Beat 1: Pursuit. Beat 2: Trap. Beat 3: Counter. Beat 4: Escape.\n"
+            "- Chapter 3: Beat 1: Contact. Beat 2: Threat. Beat 3: Choice. Beat 4: Retreat.\n"
+            "- Chapter 4: Beat 1: Camp. Beat 2: Signal. Beat 3: Watch. Beat 4: Dawn.\n"
+            "- Chapter 5: Beat 1: Choice. Beat 2: Departure. Beat 3: Cost. Beat 4: Trail.\n"
+            "- Ending hook: The trail continues."
+        )
+        checkpoint = "## DAY 1: Ashfall\n\nRecovered prose."
+
+        story = story_gen.generate_episode_story_multi_pass(
+            model="mock-model",
+            title="Resume Test",
+            num_days=1,
+            jedi_details={"name": "Vael Tirin"},
+            setting="Ryloth frontier",
+            tone_focus=["dread"],
+            additional_instructions="",
+            temperature=0.6,
+            outline=outline,
+            day_drafts={1: checkpoint},
+            draft_only=True,
+        )
+
+        self.assertEqual(story, checkpoint)
+        ollama.generate_stream.assert_not_called()

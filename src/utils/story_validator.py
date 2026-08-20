@@ -6,10 +6,70 @@ near-identical days of content). Does NOT block — surfaces warnings only.
 
 import re
 from typing import Dict, Any, List
+from src.utils.prompt_schema import TARGET_WORDS_PER_DAY
 
 # Below this fraction of the target length we flag a short story.
 SHORT_FRACTION = 0.7
-TARGET_WORDS = 7500
+TARGET_WORDS = TARGET_WORDS_PER_DAY
+
+
+def strip_saved_episode_header(story: str) -> str:
+    """Return the generated body without the storage-owned Markdown header."""
+    text = str(story or "")
+    match = re.search(r"^##\s*DAY\s+\d+\b", text, re.MULTILINE | re.IGNORECASE)
+    return text[match.start():].lstrip() if match else text.strip()
+
+
+def deduplicate_story(story: str) -> tuple[str, Dict[str, int]]:
+    """Remove only repeated model output while preserving first occurrences.
+
+    This is a recovery step for local models that occasionally copy a full
+    paragraph or restart a sentence loop. Markdown headings and episode
+    metadata are never removed. Sentence signatures are scoped globally so a
+    repeated opening cannot recur across days.
+    """
+    parts = re.split(r"(\n\s*\n)", str(story or ""))
+    seen_paragraphs = set()
+    seen_sentence_starts = set()
+    seen_metadata_lines = set()
+    output = []
+    removed_paragraphs = 0
+    removed_sentences = 0
+    for part in parts:
+        if not part.strip():
+            output.append(part)
+            continue
+        stripped = part.strip()
+        if stripped.startswith(("#", "**Generated:", "**Days:", "**Target Jedi:", "**Setting:")):
+            # Models can replay the complete episode header at the start of
+            # several passes. Preserve the first copy, but remove exact
+            # duplicate title/metadata lines from the saved artifact.
+            if stripped in seen_metadata_lines:
+                removed_paragraphs += 1
+                continue
+            seen_metadata_lines.add(stripped)
+            output.append(part)
+            continue
+        normalized = re.sub(r"\s+", " ", stripped.lower())
+        if len(stripped) > 80 and normalized in seen_paragraphs:
+            removed_paragraphs += 1
+            continue
+        seen_paragraphs.add(normalized)
+        kept_sentences = []
+        for sentence in re.split(r"(?<=[.!?])\s+", stripped):
+            sentence_clean = sentence.strip()
+            signature = " ".join(sentence_clean.lower().split()[:8])
+            if 40 < len(sentence_clean) < 400 and signature in seen_sentence_starts:
+                removed_sentences += 1
+                continue
+            if 40 < len(sentence_clean) < 400:
+                seen_sentence_starts.add(signature)
+            kept_sentences.append(sentence_clean)
+        output.append(" ".join(kept_sentences))
+    return "".join(output), {
+        "removed_paragraphs": removed_paragraphs,
+        "removed_sentence_starts": removed_sentences,
+    }
 
 
 def validate_story(story: str, expected_days: int | None = None) -> Dict[str, Any]:
@@ -35,15 +95,16 @@ def validate_story(story: str, expected_days: int | None = None) -> Dict[str, An
     num_days = len(days)
     report["num_days_found"] = num_days
 
-    if expected_days and num_days and num_days < expected_days:
+    if expected_days and num_days != expected_days:
         report["warnings"].append(
             f"Story has {num_days} day(s) but {expected_days} were requested."
         )
 
     # Word count
-    if word_count < int(TARGET_WORDS * SHORT_FRACTION):
+    target_word_count = TARGET_WORDS * max(expected_days or 1, 1)
+    if word_count < int(target_word_count * SHORT_FRACTION):
         report["warnings"].append(
-            f"Story is only ~{word_count:,} words (target ~{TARGET_WORDS:,}). "
+            f"Story is only ~{word_count:,} words (target ~{target_word_count:,}). "
             "It may be truncated."
         )
 
@@ -84,18 +145,3 @@ def validate_story(story: str, expected_days: int | None = None) -> Dict[str, An
         )
 
     return report
-
-
-def render_warnings(report: Dict[str, Any]) -> None:
-    """Render quality warnings as Streamlit alert cards (if any)."""
-    import streamlit as st
-
-    warnings = report.get("warnings") or []
-    if not warnings:
-        return
-
-    body = "\n".join(f"• {w}" for w in warnings)
-    st.markdown(
-        f'<div class="quality-warn"><strong>⚠️ Quality check</strong><br/>{body}</div>',
-        unsafe_allow_html=True,
-    )

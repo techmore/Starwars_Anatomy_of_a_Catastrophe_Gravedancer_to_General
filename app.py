@@ -50,12 +50,20 @@ def main():
         prompt_gen=PromptGenerator(mlx),
     )
 
-    st.markdown("# Gravedancer to General")
-    st.markdown("*Anatomy of a Catastrophe - A Star Wars fan series*")
-    st.markdown("---")
+    st.markdown(
+        """
+        <section class="sw-hero" aria-labelledby="sw-hero-title">
+          <div class="sw-eyebrow">CREATOR CONSOLE · EPISODE WORKSHOP</div>
+          <h1 id="sw-hero-title">Gravedancer to General</h1>
+          <p>Anatomy of a Catastrophe — a Star Wars fan series about the making of Grievous.</p>
+          <div class="sw-hero-meta"><span>LOCAL FIRST</span><span>STORY → VISUALS</span><span>LONG-FORM READY</span></div>
+        </section>
+        """,
+        unsafe_allow_html=True,
+    )
 
     tab_story, tab_art, tab_prompts, tab_viewer, tab_library = st.tabs(
-        ["📖 Story", "🎨 Art", "🧩 Prompts", "👁 Viewer", "📚 Library"]
+        ["Story", "Art", "Prompts", "Viewer", "Library"]
     )
 
     with tab_story:
@@ -75,7 +83,6 @@ def main():
 
     with tab_library:
         render_library_tab(context)
-
 
 if __name__ == "__main__":
     main()

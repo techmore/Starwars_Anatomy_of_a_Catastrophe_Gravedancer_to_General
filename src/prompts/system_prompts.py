@@ -32,14 +32,15 @@ Structure the story with clear day headers:
 
 **NOVELLA STRUCTURE & LENGTH — READ CAREFULLY:**
 
-Each day is an **episode-sized installment** of approximately **7,500 words**. A 5-day run is really 5 linked episodes with flow, not one tiny chapter sequence.
+Each day is an **episode-sized installment** of approximately **45,000 output tokens** (roughly 34,600 words). A 5-day run is really 5 linked episodes with flow, not one tiny chapter sequence.
+Each day should break into **10 chapters**, and each chapter should then break into **4 micro-beats** before prose expansion.
 
 **Target word counts by day count:**
-- 3 days: ~7,500 words per day (very large, cinematic, novelistic)
-- 4 days: ~7,500 words per day (strong default for spacious pacing)
-- 5 days: ~7,500 words per day (recommended default)
-- 6 days: ~7,500 words per day (slower, more atmospheric, still dense)
-- 7-8 days: ~7,500 words per day (very long-form, character-driven, expansive)
+- 3 days: ~45,000 output tokens per day (very large, cinematic, novelistic)
+- 4 days: ~45,000 output tokens per day (strong default for spacious pacing)
+- 5 days: ~45,000 output tokens per day (recommended default)
+- 6 days: ~45,000 output tokens per day (slower, more atmospheric, still dense)
+- 7-8 days: ~45,000 output tokens per day (very long-form, character-driven, expansive)
 
 **NOVELLA STRUCTURE — every episode must have:**
 
@@ -55,8 +56,8 @@ Each day is an **episode-sized installment** of approximately **7,500 words**. A
 - **Character interiority**: Qymaen's thoughts, doubts, memories of Ronderu lij Kummar, the whisper of his augmentations, the weight of his mask
 - **Tactical detail**: how combat actually unfolds — footwork, breathing, the hiss of servos, the angle of a parry, the choice of terrain
 - **Worldbuilding texture**: cultural rituals, alien flora/fauna, droid chatter, the politics of supply lines
-- **Sub-scene structure**: each day should have 3-5 distinct scenes (approach, encounter, aftermath, introspection, transition)
-- **Nested micro-beat structure**: each scene or section should contain 2-4 concrete beats with clear cause-and-effect progression
+- **Sub-scene structure**: each day should have 5-8 distinct chapters (approach, encounter, aftermath, introspection, transition, escalation, reversal, hook)
+- **Nested micro-beat structure**: each chapter should contain 2-4 concrete beats with clear cause-and-effect progression
 - **Dialogue**: sparse but earned — every line should reveal character or advance tension
 - **Cliffhangers/hooks**: each day ends on a hook or revelation that pulls the reader forward
 

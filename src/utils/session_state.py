@@ -1,29 +1,31 @@
 """Session-state helpers for the prototype UI shell."""
 
+from copy import deepcopy
 from typing import Iterable
 
 from src.prompts.system_prompts import (
     STORY_GENERATION_SYSTEM_PROMPT,
     VISUAL_PROMPT_SYSTEM_PROMPT,
 )
-from src.utils.models import DEFAULT_MODEL
+from src.utils.settings import SETTINGS
 
 
 SESSION_DEFAULTS = {
     "current_episode_id": None,
     "current_story": "",
     "current_metadata": {},
-    "mlx_model": DEFAULT_MODEL,
+    "mlx_model": SETTINGS.model,
     "drawthings_url": "http://localhost:7860",
     "model": "",
     "temperature": 0.8,
-    "storage_path": "episodes",
+    "storage_path": str(SETTINGS.storage_path),
     "story_sys_prompt": STORY_GENERATION_SYSTEM_PROMPT,
     "visual_sys_prompt": VISUAL_PROMPT_SYSTEM_PROMPT,
     "show_manual_form_state": False,
     "auto_generate": False,
     "story_title": "",
     "story_days": 5,
+    "generation_profile": "standard",
     "story_setting": "",
     "story_tone": [],
     "story_outline": "",
@@ -34,6 +36,28 @@ SESSION_DEFAULTS = {
     "story_draft_only_mode": False,
     "story_outline_approved": False,
     "current_critique_report": None,
+}
+
+
+GENERATION_PROFILES = {
+    "smoke": {
+        "label": "Smoke test",
+        "days": 1,
+        "description": "Fast validation run for prompts, connectivity, and saving.",
+        "estimate": "Usually a few minutes",
+    },
+    "standard": {
+        "label": "Standard",
+        "days": 5,
+        "description": "Balanced episode draft for normal iteration.",
+        "estimate": "Model-dependent; typically several minutes",
+    },
+    "long_form": {
+        "label": "Long-form",
+        "days": 8,
+        "description": "Full-length production profile targeting roughly 45,000 output tokens per day.",
+        "estimate": "May take an hour or more on a local 9B model",
+    },
 }
 
 
@@ -55,7 +79,9 @@ def init_session_state(st):
     """Populate required defaults if they are not already present."""
     for key, value in SESSION_DEFAULTS.items():
         if key not in st.session_state:
-            st.session_state[key] = value
+            # Defaults include lists/dicts. Copy them per session so one
+            # browser session cannot mutate another session's initial state.
+            st.session_state[key] = deepcopy(value)
 
 
 def clear_story_inputs(st, keys: Iterable[str] = STORY_INPUT_KEYS) -> None:
@@ -98,7 +124,43 @@ def hydrate_story_inputs(st, concept: dict) -> None:
     st.session_state["jedi_saber"] = concept.get("jedi_saber", "")
     st.session_state["jedi_personality"] = concept.get("jedi_personality", "")
     st.session_state["jedi_target"] = concept.get("jedi_target", "")
-    st.session_state["story_tone"] = concept.get("tone", [])
+    st.session_state["story_tone"] = list(concept.get("tone", []) or [])
+    st.session_state["story_additional"] = concept.get("additional_instructions", "")
+
+
+def load_episode_into_session(st, episode: dict) -> bool:
+    """Make a saved episode the active story and hydrate its editable fields."""
+    if not isinstance(episode, dict):
+        return False
+    metadata = episode.get("metadata")
+    if not isinstance(metadata, dict):
+        return False
+    episode_id = metadata.get("id") or episode.get("id")
+    if not episode_id:
+        return False
+
+    target_jedi = metadata.get("target_jedi_name") or metadata.get("jedi_name", "")
+    hydrate_story_inputs(
+        st,
+        {
+            "title": metadata.get("title", ""),
+            "days": metadata.get("num_days", 5),
+            "setting": metadata.get("setting", ""),
+            "jedi_name": target_jedi,
+            "jedi_species": metadata.get("jedi_species", ""),
+            "jedi_rank": metadata.get("jedi_rank", ""),
+            "jedi_saber": metadata.get("jedi_lightsaber_color", ""),
+            "jedi_personality": metadata.get("jedi_personality", ""),
+            "jedi_target": metadata.get("jedi_why_targeted", ""),
+            "tone": metadata.get("tone_focus", []),
+            "additional_instructions": metadata.get("additional_instructions", ""),
+        },
+    )
+    st.session_state["current_episode_id"] = episode_id
+    st.session_state["current_story"] = episode.get("story", "") or ""
+    st.session_state["current_metadata"] = dict(metadata)
+    st.session_state["current_critique_report"] = None
+    return True
 
 
 def build_story_metadata(st, model: str, temperature: float) -> dict:
@@ -118,6 +180,7 @@ def build_story_metadata(st, model: str, temperature: float) -> dict:
         "additional_instructions": st.session_state.get("story_additional", ""),
         "model": model,
         "temperature": temperature,
+        "generation_profile": st.session_state.get("generation_profile", "standard"),
     }
 
 
@@ -169,17 +232,55 @@ def save_day_prompt_sets(storage, episode_id, existing_prompts: list, day_num: i
 def get_episode_prompt_sets(episode: dict) -> list:
     """Return the stored scene prompt sets for an episode."""
     prompts = episode.get("prompts") if episode else None
-    return list(prompts.get("scenes", [])) if prompts else []
+    scenes = prompts.get("scenes", []) if isinstance(prompts, dict) else []
+    return [scene for scene in scenes if isinstance(scene, dict)] if isinstance(scenes, list) else []
 
 
 def get_episode_day_prompt_sets(episode: dict, day_num: int) -> list:
     """Return the prompt sets for a specific day from an episode."""
-    return [p for p in get_episode_prompt_sets(episode) if p.get("day") == day_num]
+    return [p for p in get_episode_prompt_sets(episode) if isinstance(p, dict) and p.get("day") == day_num]
+
+
+def normalize_saved_prompt_sets_for_selection(prompt_sets: list) -> list:
+    """Adapt stored prompt sets to the scene-selection shape used by the UI."""
+    normalized = []
+    for index, prompt_set in enumerate(prompt_sets or [], start=1):
+        if not isinstance(prompt_set, dict):
+            continue
+        scene_text = (
+            prompt_set.get("scene_text")
+            or prompt_set.get("medium")
+            or prompt_set.get("wide")
+            or prompt_set.get("dramatic")
+            or ""
+        )
+        normalized.append(
+            {
+                **prompt_set,
+                "day": prompt_set.get("day", 1),
+                "text": scene_text,
+                "display_title": prompt_set.get("display_title") or f"Saved prompt set {index}",
+                "visual_score": prompt_set.get("visual_score", 0),
+            }
+        )
+    return normalized
 
 
 def get_episode_target_jedi_name(episode: dict) -> str:
     """Return the canonical display name for the episode's target Jedi."""
-    return episode.get("target_jedi_name") or episode.get("jedi_name") or "Unknown"
+    if not episode:
+        return "Unknown"
+    metadata = episode.get("metadata") if isinstance(episode.get("metadata"), dict) else episode
+    return metadata.get("target_jedi_name") or metadata.get("jedi_name") or "Unknown"
+
+
+def episode_selector_label(episode: dict) -> str:
+    """Build a unique, readable label for episode picker controls."""
+    metadata = episode.get("metadata") if isinstance(episode.get("metadata"), dict) else episode
+    title = metadata.get("title", "Untitled")
+    created_at = metadata.get("created_at", "")[:10] or "undated"
+    episode_id = metadata.get("id") or episode.get("id") or "unknown"
+    return f"{title} ({created_at}) · {episode_id[-8:]}"
 
 
 def summarize_episode_prompt_archive(episode: dict) -> dict:
@@ -187,6 +288,8 @@ def summarize_episode_prompt_archive(episode: dict) -> dict:
     prompt_sets = get_episode_prompt_sets(episode)
     day_counts = {}
     for prompt_set in prompt_sets:
+        if not isinstance(prompt_set, dict):
+            continue
         day_num = prompt_set.get("day", "Unknown")
         day_counts[day_num] = day_counts.get(day_num, 0) + 1
     prompt_days = len({day for day in day_counts if isinstance(day, int) and day > 0})
@@ -242,6 +345,43 @@ def summarize_episode_collection(episodes: list) -> dict:
         "total_prompt_days": total_prompt_days,
         "covered_episodes": covered_episodes,
     }
+
+
+def get_episode_banner_prompt(episode: dict) -> str:
+    """Return the stored banner prompt for an episode, or empty string."""
+    prompts = episode.get("prompts") if episode else None
+    return (prompts.get("banner") or {}).get("banner_prompt", "") if prompts else ""
+
+
+def get_episode_chapter_prompts(episode: dict) -> list:
+    """Return the stored chapter-level prompt sets for an episode."""
+    prompts = episode.get("prompts") if episode else None
+    return (prompts.get("chapters") or []) if prompts else []
+
+
+def save_banner_prompt(storage, episode_id: str, banner_prompt: str, negative_prompt: str = "") -> dict:
+    """Persist a banner prompt to the episode's prompt payload."""
+    episode = storage.load_episode(episode_id)
+    existing = dict(episode.get("prompts") or {})
+    existing["banner"] = {
+        "banner_prompt": banner_prompt,
+        "negative_prompt": negative_prompt,
+    }
+    storage.update_episode(episode_id=episode_id, prompts=existing)
+    return existing
+
+
+def save_chapter_prompt(storage, episode_id: str, chapter_prompt: dict) -> list:
+    """Append a chapter prompt set to the episode's prompt payload."""
+    episode = storage.load_episode(episode_id)
+    existing = dict(episode.get("prompts") or {})
+    chapters = list(existing.get("chapters", []))
+    existing_key = (chapter_prompt.get("day"), chapter_prompt.get("chapter"))
+    chapters = [cp for cp in chapters if (cp.get("day"), cp.get("chapter")) != existing_key]
+    chapters.append(chapter_prompt)
+    existing["chapters"] = chapters
+    storage.update_episode(episode_id=episode_id, prompts=existing)
+    return chapters
 
 
 def build_story_generation_context(st) -> dict:

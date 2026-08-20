@@ -2,20 +2,29 @@
 
 import streamlit as st
 import json
+from pathlib import Path
 from src.utils.storage import EpisodeStorage
 from src.utils.session_state import (
     build_episode_full_json_export,
     get_episode_target_jedi_name,
+    get_episode_prompt_sets,
+    get_episode_day_prompt_sets,
     render_episode_prompt_archive_summary,
     summarize_episode_collection,
+    load_episode_into_session,
 )
 
 
 def render_library_tab(context):
     """Render the episode library/export tab."""
     storage: EpisodeStorage = context.storage
+    prompt_gen = context.prompt_gen
+    dt_client = context.dt_client
+    story_gen = context.story_gen
+    model = context.mlx_model
+    temperature = context.temperature
     
-    st.markdown("## Episode Library & Export")
+    st.markdown("## Archive workspace")
     st.markdown('<div class="blood-accent">Your archive of hunts. Export. Share. Continue the legacy.</div>', unsafe_allow_html=True)
     
     episodes = storage.list_episodes()
@@ -101,8 +110,13 @@ def render_library_tab(context):
                         btn_col1, btn_col2, btn_col3 = st.columns(3)
                         with btn_col1:
                             if st.button("Load", key=f"lib_load_{ep['id']}"):
-                                st.session_state["library_selected"] = ep['id']
-                                st.success(f"Loaded: {ep['title']}")
+                                loaded = storage.load_episode(ep["id"])
+                                if loaded and load_episode_into_session(st, loaded):
+                                    st.session_state["library_selected"] = ep["id"]
+                                    st.success(f"Loaded: {ep['title']}")
+                                    st.rerun()
+                                else:
+                                    st.error(f"Could not load: {ep['title']}")
                         with btn_col2:
                             if st.button("Export", key=f"lib_export_{ep['id']}"):
                                 st.session_state["library_export"] = ep['id']
@@ -138,11 +152,10 @@ def render_library_tab(context):
             st.markdown(f"### Export: {episode['metadata'].get('title', 'Untitled')}")
             prompt_summary = render_episode_prompt_archive_summary(st, episode)
             st.caption(f"Saved prompt sets: {prompt_summary['prompt_sets']}")
-            
+
             exp_col1, exp_col2, exp_col3 = st.columns(3)
-            
+
             with exp_col1:
-                # Markdown export
                 st.download_button(
                     "Download Story (.md)",
                     data=episode["story"],
@@ -150,9 +163,8 @@ def render_library_tab(context):
                     mime="text/markdown",
                     key=f"dl_md_{ep_id}"
                 )
-            
+
             with exp_col2:
-                # JSON export
                 json_data = build_episode_full_json_export(episode)
                 st.download_button(
                     "Download Full JSON",
@@ -161,9 +173,8 @@ def render_library_tab(context):
                     mime="application/json",
                     key=f"dl_json_{ep_id}"
                 )
-            
+
             with exp_col3:
-                # Prompts export
                 if episode.get("prompts"):
                     st.download_button(
                         "Download Prompts (.json)",
@@ -187,10 +198,31 @@ def render_library_tab(context):
                 )
             else:
                 st.info("Archive unavailable.")
-            
+
             if st.button("Close Export Panel"):
                 del st.session_state["library_export"]
                 st.rerun()
+
+    st.markdown("---")
+    st.markdown("### Visual Pipeline, Post-Review")
+    st.caption("Generate image prompts after the story is saved, then batch the whole episode through Draw Things so you can review and keep the best candidates afterward.")
+
+    selected_episode = None
+    if "library_export" in st.session_state:
+        selected_episode = storage.load_episode(st.session_state["library_export"])
+    elif filtered:
+        selected_episode = storage.load_episode(filtered[0]["id"])
+
+    if selected_episode:
+        _render_library_visual_workflow(
+            storage=storage,
+            prompt_gen=prompt_gen,
+            dt_client=dt_client,
+            story_gen=story_gen,
+            model=model,
+            temperature=temperature,
+            episode=selected_episode,
+        )
     
     # Folder structure info
     st.markdown("---")
@@ -238,3 +270,88 @@ gravedancer-to-general/
 6. Save videos to `videos/episode-XXX/`
 7. Commit everything to your GitHub repo
         """)
+
+
+def _render_library_visual_workflow(storage, prompt_gen, dt_client, story_gen, model, temperature, episode):
+    """Post-review visual workflow for prompt generation and candidate selection."""
+    ep_id = episode["metadata"].get("id")
+    story = episode.get("story", "")
+    days = story_gen.parse_days(story)
+    if not days:
+        st.info("No day structure found for this episode.")
+        return
+
+    dt_ok = dt_client.check_connection()
+    if not dt_ok:
+        st.warning("Draw Things is offline. Prompt generation can still run, but image rendering will be skipped.")
+
+    max_scenes = st.slider("Scene candidates per day", min_value=1, max_value=4, value=2, key=f"lib_viz_max_{ep_id}")
+    aspect_ratio = st.selectbox("Aspect ratio", ["16:9", "21:9", "4:3", "3:2", "1:1"], index=0, key=f"lib_viz_ar_{ep_id}")
+    temperature_prompt = st.slider("Prompt temperature", min_value=0.1, max_value=1.0, value=float(temperature), step=0.1, key=f"lib_viz_temp_{ep_id}")
+    image_variants = st.slider("Image generations per prompt", min_value=1, max_value=5, value=3, key=f"lib_viz_imgs_{ep_id}")
+
+    existing_prompt_sets = get_episode_prompt_sets(episode)
+    if st.button("Run Visual Pipeline For Episode", key=f"lib_viz_run_{ep_id}", type="primary"):
+        merged = list(existing_prompt_sets)
+        episode_results = []
+        for day in days:
+            day_scenes = prompt_gen.extract_scenes(
+                day["content"],
+                max_scenes_per_day=max_scenes,
+                day_number=day["number"],
+            )
+            if not day_scenes:
+                continue
+            dwc = f"({day['word_count']:,}) " if day.get('word_count') else ""
+            st.markdown(f"#### {dwc}Day {day['number']}: {day['title']}")
+            results = prompt_gen.generate_batch_prompts(
+                scenes=day_scenes,
+                model=model,
+                aspect_ratio=aspect_ratio,
+                temperature=temperature_prompt,
+                system_prompt=st.session_state["visual_sys_prompt"],
+            )
+            episode_results.extend(results)
+            for result in results:
+                if "error" in result:
+                    st.error(result["error"])
+                    continue
+                merged.append({
+                    "day": day["number"],
+                    "prompt_type": "Flux.2 Klein 4b - DrawThings",
+                    "aspect_ratio": aspect_ratio,
+                    "wide": result.get("wide", ""),
+                    "medium": result.get("medium", ""),
+                    "closeup": result.get("closeup", ""),
+                    "dramatic": result.get("dramatic", ""),
+                    "alternate": result.get("alternate", ""),
+                    "negative_prompt": result.get("negative_prompt", ""),
+                    "raw_response": result.get("raw_response", ""),
+                })
+
+                if dt_ok:
+                    chosen_prompt = result.get("medium") or result.get("wide") or result.get("dramatic") or result.get("closeup") or result.get("alternate") or ""
+                    if chosen_prompt:
+                        for variant in range(1, image_variants + 1):
+                            try:
+                                img = dt_client.generate_image(
+                                    prompt=chosen_prompt,
+                                    negative_prompt=result.get("negative_prompt", ""),
+                                    seed=-1 if variant == 1 else variant,
+                                )
+                                rel = storage.save_image(
+                                    ep_id,
+                                    day=day["number"],
+                                    shot=f"scene-{len(episode_results):02d}-candidate",
+                                    image_bytes=img,
+                                    variant=variant,
+                                )
+                                st.image(img, caption=f"Saved {Path(rel).name}", use_container_width=True)
+                            except Exception as e:
+                                st.error(f"Render failed for day {day['number']} candidate {variant}: {e}")
+        # The Library owns only the legacy scene prompts. Preserve banner and
+        # chapter prompts created in the Viewer.
+        prompt_payload = dict((storage.load_episode(ep_id) or {}).get("prompts") or {})
+        prompt_payload.update({"scenes": merged, "aspect_ratio": aspect_ratio})
+        storage.update_episode(episode_id=ep_id, prompts=prompt_payload)
+        st.success("Visual pipeline completed for the episode.")

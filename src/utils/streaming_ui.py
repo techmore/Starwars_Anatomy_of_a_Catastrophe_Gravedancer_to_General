@@ -1,5 +1,6 @@
 """Helpers for routing streamed generation text into UI panels."""
 
+import time
 from typing import Dict, List
 
 from src.utils._streamlit_fallback import st
@@ -32,7 +33,14 @@ def reset_stream_panels(widgets: Dict[str, object], progress_state: Dict[str, ob
 
 def build_progress_state() -> Dict[str, object]:
     """Create the canonical initial progress-state payload."""
-    return {"events": [], "current_stage": "Idle"}
+    return {
+        "events": [],
+        "current_stage": "Idle",
+        "started_at": time.monotonic(),
+        "chars_generated": 0,
+        "approx_tokens": 0,
+        "target_tokens": 0,
+    }
 
 
 def build_stream_runtime(streamlit_module=None) -> Dict[str, object]:
@@ -72,7 +80,23 @@ def _build_progress_log_lines(progress_state: Dict[str, object], extra_line: str
     """Build the text shown in the progress panel."""
     events = progress_state.get("events", [])
     current_stage = progress_state.get("current_stage", "Idle")
-    log_lines = [f"**Current Phase:** {current_stage}", f"**Progress Events:** {len(events)}"]
+    started_at = progress_state.get("started_at")
+    elapsed = max(0.0, time.monotonic() - started_at) if isinstance(started_at, (int, float)) else 0.0
+    chars = int(progress_state.get("chars_generated", 0) or 0)
+    approx_tokens = int(progress_state.get("approx_tokens", 0) or 0)
+    rate = approx_tokens / elapsed if elapsed > 0 else 0.0
+    target_tokens = int(progress_state.get("target_tokens", 0) or 0)
+    progress_line = ""
+    if target_tokens:
+        percent = min(100.0, approx_tokens / target_tokens * 100)
+        remaining = max(0, target_tokens - approx_tokens)
+        eta = remaining / rate if rate > 0 else 0
+        progress_line = f" · **Target:** {percent:.1f}% · **ETA:** {_format_elapsed(eta)}"
+    log_lines = [
+        f"**Current Phase:** {current_stage}",
+        f"**Elapsed:** {_format_elapsed(elapsed)} · **Output:** ~{approx_tokens:,} tokens ({chars:,} chars){progress_line}",
+        f"**Throughput:** {rate:.1f} tokens/sec · **Progress Events:** {len(events)}",
+    ]
     log_lines.extend(f"- {line}" for line in events[-8:])
     if extra_line:
         log_lines.append(f"- {extra_line}")
@@ -89,6 +113,12 @@ def render_stream_update(stage: str, message: str, text: str, widgets: Dict[str,
     friendly = _friendly_stage_name(stage)
     events = progress_state.setdefault("events", [])
     progress_state["current_stage"] = friendly
+    if text:
+        chars = len(text)
+        progress_state["chars_generated"] = max(int(progress_state.get("chars_generated", 0) or 0), chars)
+        # A conservative approximation suitable for an operational display,
+        # not billing or quality measurement.
+        progress_state["approx_tokens"] = max(0, round(chars / 4))
     events.append(f"{len(events) + 1}. **{friendly}**: {message}")
     stage_label = widgets.get("stage_label")
     if stage_label:
@@ -128,3 +158,14 @@ def finalize_stream_state(
     progress_log = widgets.get("progress_log")
     if progress_log:
         progress_log.markdown("\n".join(_build_progress_log_lines(progress_state, extra_line=message)))
+
+
+def _format_elapsed(seconds: float) -> str:
+    """Format elapsed seconds for a compact live-generation display."""
+    if seconds < 60:
+        return f"{seconds:.0f}s"
+    minutes, remainder = divmod(int(seconds), 60)
+    hours, minutes = divmod(minutes, 60)
+    if hours:
+        return f"{hours}h {minutes:02d}m"
+    return f"{minutes}m {remainder:02d}s"

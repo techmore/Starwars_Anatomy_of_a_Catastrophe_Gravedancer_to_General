@@ -10,7 +10,3 @@ ignore = ["E501"]
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-norecursedirs = [".git", ".pytest_cache", "__pycache__", "venv", "docs", "episodes", "log", "Images"]

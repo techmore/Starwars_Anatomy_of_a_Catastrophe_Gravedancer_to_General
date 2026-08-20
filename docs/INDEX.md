@@ -16,6 +16,7 @@ This directory holds the product brief, consistency notes, and UI migration plan
 - [`docs/REQUIREMENTS-TRACE.md`](./REQUIREMENTS-TRACE.md) - requirement-to-implementation trace
 - [`docs/PROJECT-STATUS.md`](./PROJECT-STATUS.md) - handoff summary
 - [`docs/VERIFICATION.md`](./VERIFICATION.md) - current verification commands
+- [`docs/story-success-spec.md`](./story-success-spec.md) - narrative acceptance criteria and creator approval workflow
 
 ## How to use this set
 

@@ -68,9 +68,9 @@ When calling the text model:
 - store the generated story as Markdown plus metadata JSON
 - prefer a multi-pass structure over a single monolithic generation:
   1. outline the full episode
-  2. break each day into 3 to 5 named sections or chapters
-  3. break each section into 2 to 4 concrete micro-beats
-  4. expand each section into prose from the outline
+  2. break each day into 5 to 8 named chapters
+  3. break each chapter into 2 to 4 concrete micro-beats
+  4. expand each chapter into prose from the outline
   5. optionally run a continuity pass to remove contradictions
 - treat each day as an episode-sized installment, roughly 7,500 words per day, with a 5-day run acting as five linked episodes that maintain flow
 - keep the daily target word count high, but never allow rambling to replace structure
@@ -173,6 +173,7 @@ The codebase already follows this layered shape:
 - `EpisodeStorage` persists the episode, prompt sets, and archive exports locally
 - the UI should keep exposing generation progress clearly so the user can tell which pass is running
 - the concept pass should stay short and strict, with a hard validator for the final structured output
+- visual prompt generation should happen after the story is reviewed and saved, so the selected scenes come from stable prose rather than a moving draft
 
 ## Current Priority
 Do not spend time on a ComfyUI workflow. That is not the target pipeline.

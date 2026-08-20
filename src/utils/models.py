@@ -7,13 +7,94 @@ The app uses this to recommend models in the UI when MLX models are detected.
 # Model metadata: name -> {display, quality, strengths, ram_gb, family}
 # Names use prefix-matching to match any tag (e.g., "llama3.1" matches "llama3.1:8b")
 MODEL_CATALOG = {
+    # Recommended production stack for the M1 Pro / 32 GB target.
+    "mlx-community/Qwen3.8-27B-OptiQ-4bit": {
+        "display": "Qwen 3.8 27B OptiQ 4-bit MLX — PRIMARY STORY MODEL",
+        "quality": "best",
+        "tier": 0,
+        "strengths": ["Highest-quality local prose", "Long-form structure", "Strong revision and continuity work"],
+        "ram_gb": "~15-17 plus context/KV cache",
+        "family": "qwen",
+        "story_pull": True,
+        "platform": "mac",
+    },
+    "mlx-community/gemma-4-e4b-it-OptiQ-4bit": {
+        "display": "Gemma 4 E4B IT OptiQ 4-bit MLX — FAST STORY MODEL",
+        "quality": "best",
+        "tier": 1,
+        "strengths": ["Fast Apple Silicon inference", "Good instruction following", "Compact quality model"],
+        "ram_gb": "~8-11 plus context/KV cache",
+        "family": "gemma",
+        "story_pull": True,
+        "platform": "mac",
+    },
+    "mlx-community/gemma-4-e2b-it-4bit": {
+        "display": "Gemma 4 E2B IT 4-bit MLX — UTILITY MODEL",
+        "quality": "good",
+        "tier": 2,
+        "strengths": ["Very fast", "Low memory pressure", "Metadata and validation passes"],
+        "ram_gb": "~3-5 plus context/KV cache",
+        "family": "gemma",
+        "story_pull": True,
+        "platform": "mac",
+    },
+    "mlx-community/Qwen3.5-4B-MLX-4bit": {
+        "display": "Qwen 3.5 4B MLX 4-bit — FAST UTILITY MODEL",
+        "quality": "good",
+        "tier": 2,
+        "strengths": ["Fast iteration", "Structured transformations", "Low memory pressure"],
+        "ram_gb": "~3-5 plus context/KV cache",
+        "family": "qwen",
+        "story_pull": True,
+        "platform": "mac",
+    },
     # Top tier - best for long-form creative writing
+    "prism-ml/Bonsai-27B-mlx-1bit": {
+        "display": "Bonsai 27B 1-bit MLX (memory-efficient creative workflow)",
+        "quality": "good",
+        "tier": 0,
+        "strengths": ["27B-class model in a compact MLX package", "Long-form story work", "Low unified-memory pressure"],
+        "ram_gb": "~6-8 at practical story contexts",
+        "family": "bonsai",
+        "story_pull": True,
+        "platform": "mac",
+    },
     "qwen3.6:27b-mlx": {
         "display": "Qwen 3.6 27B MLX (Apple Silicon optimized) — DEFAULT",
         "quality": "best",
         "tier": 0,  # Top priority for Mac users
         "strengths": ["MLX/Metal accelerated", "Long-form prose", "Following complex structure"],
         "ram_gb": "~18-20",
+        "family": "qwen",
+        "story_pull": True,
+        "platform": "mac"
+    },
+    "mlx-community/gemma-4-e2b-it-qat-OptiQ-4bit": {
+        "display": "Gemma 4 E2B OptiQ 4-bit MLX (Apple Silicon) — DEFAULT",
+        "quality": "best",
+        "tier": 0,
+        "strengths": ["Fast on Apple Silicon", "Clean instruction following", "Compact ~4.3GB footprint"],
+        "ram_gb": "~4-5",
+        "family": "gemma",
+        "story_pull": True,
+        "platform": "mac"
+    },
+    "mlx-community/Qwen3-32B-4bit": {
+        "display": "Qwen 3 32B 4-bit MLX (Apple Silicon optimized)",
+        "quality": "best",
+        "tier": 0,
+        "strengths": ["MLX/Metal accelerated", "Excellent creative writing", "Long-form prose"],
+        "ram_gb": "~18-20",
+        "family": "qwen",
+        "story_pull": True,
+        "platform": "mac"
+    },
+    "mlx-community/Qwen3.6-27B-OptiQ-4bit": {
+        "display": "Qwen 3.6 27B OptiQ 4-bit MLX (Apple Silicon optimized)",
+        "quality": "best",
+        "tier": 0,
+        "strengths": ["MLX/Metal accelerated", "Lower memory footprint", "Long-form prose"],
+        "ram_gb": "~14-16",
         "family": "qwen",
         "story_pull": True,
         "platform": "mac"
@@ -28,8 +109,8 @@ MODEL_CATALOG = {
         "story_pull": True,
         "platform": "mac"
     },
-    "mlx-community/Qwen3.5-4B-4bit": {
-        "display": "Qwen 3.5 4B 4-bit MLX (fast iteration)",
+    "mlx-community/Qwen3-8B-4bit": {
+        "display": "Qwen 3 8B 4-bit MLX (fast iteration)",
         "quality": "good",
         "tier": 1,
         "strengths": ["Very fast", "Low memory footprint", "Great for iteration"],
@@ -144,9 +225,17 @@ MODEL_CATALOG = {
 # Picked for: long-form creative prose, instruction following, stable generation
 # MLX variants come first — they're optimized for Apple Silicon Macs
 STORY_RECOMMENDED = [
+    "mlx-community/Qwen3.8-27B-OptiQ-4bit",
+    "mlx-community/gemma-4-e4b-it-OptiQ-4bit",
+    "mlx-community/gemma-4-e2b-it-4bit",
+    "mlx-community/Qwen3.5-4B-MLX-4bit",
+    "prism-ml/Bonsai-27B-mlx-1bit",
+    "mlx-community/gemma-4-e2b-it-qat-OptiQ-4bit",
+    "mlx-community/Qwen3-32B-4bit",
+    "mlx-community/Qwen3.6-27B-OptiQ-4bit",
     "mlx-community/Qwen3.6-27B-4bit",
     "mlx-community/gemma-4-12B-it-OptiQ-4bit",
-    "mlx-community/Qwen3.5-4B-4bit",
+    "mlx-community/Qwen3-8B-4bit",
     "qwen3.6:27b-mlx",
     "qwen3.6",
     "qwen2.5",
@@ -163,12 +252,61 @@ import re
 from pathlib import Path
 
 
-# (rest of the file content stays the same...)
+# Default model — Qwen 3.8 27B OptiQ is the primary local story workflow for
+# the target M1 Pro (32 GB unified memory). Bonsai remains available through
+# its isolated runtime; Gemma is the lightweight fallback in the sidebar.
+DEFAULT_MODEL = "mlx-community/Qwen3.8-27B-OptiQ-4bit"
 
-# Default model — Gemma 12B for cleaner instruction following and less
-# reasoning overhead than Qwen 3.5 (which wasted tokens on chain-of-thought).
-# Updated to Gemma 4 4B for faster inference while maintaining quality.
-DEFAULT_MODEL = "mlx-community/gemma-4-e2b-it-qat-OptiQ-4bit"
+# Practical guidance for this project's target hardware. These are operational
+# recommendations, not hard admission checks: users may still select a custom
+# local model when they understand its memory requirements.
+M1_PRO_32GB_GUIDANCE = {
+    "mlx-community/Qwen3.8-27B-OptiQ-4bit": {
+        "label": "Primary story model",
+        "detail": "Use for outline synthesis, long-form prose, continuity revision, and final editorial passes. Keep one model loaded and bound context deliberately.",
+        "concurrency": "Run MLX alone; close Draw Things during long generations",
+    },
+    "mlx-community/gemma-4-e4b-it-OptiQ-4bit": {
+        "label": "Fast story model",
+        "detail": "Use for routine drafting, chapter prompts, metadata, and quick revisions with substantially lower memory pressure.",
+        "concurrency": "Suitable for normal local workflow",
+    },
+    "prism-ml/Bonsai-27B-mlx-1bit": {
+        "label": "Recommended 27B-class workflow",
+        "detail": "A compact 1-bit MLX build that leaves substantially more unified-memory headroom than conventional 27B 4-bit models. Keep story context deliberately bounded.",
+        "concurrency": "Suitable for normal prompt work; pause large Draw Things renders for long story passes",
+    },
+    "mlx-community/gemma-4-e2b-it-qat-OptiQ-4bit": {
+        "label": "Recommended daily driver",
+        "detail": "Compact enough to keep Streamlit and Draw Things available for normal prompt and story work.",
+        "concurrency": "Safe for normal local workflow",
+    },
+    "mlx-community/Qwen3-8B-4bit": {
+        "label": "Balanced alternative",
+        "detail": "More headroom than the large models while remaining practical for repeated multi-pass drafts.",
+        "concurrency": "Safe for normal local workflow",
+    },
+    "mlx-community/gemma-4-12B-it-OptiQ-4bit": {
+        "label": "Quality-focused alternative",
+        "detail": "Use for story passes when you want more quality without the 27B/32B memory pressure.",
+        "concurrency": "Avoid large Draw Things renders during generation",
+    },
+    "mlx-community/Qwen3.6-27B-OptiQ-4bit": {
+        "label": "High-quality, single-workload mode",
+        "detail": "Suitable for focused story generation, but close Draw Things and avoid switching models mid-run.",
+        "concurrency": "Run MLX alone; keep generation batches small",
+    },
+    "mlx-community/Qwen3.6-27B-4bit": {
+        "label": "High-quality, single-workload mode",
+        "detail": "Suitable for focused story generation, but close Draw Things and avoid switching models mid-run.",
+        "concurrency": "Run MLX alone; keep generation batches small",
+    },
+    "mlx-community/Qwen3-32B-4bit": {
+        "label": "Near the 32 GB limit",
+        "detail": "Use only for short, deliberate story passes with Draw Things closed; unified-memory pressure can make long generations unstable.",
+        "concurrency": "Do not run alongside Draw Things",
+    },
+}
 
 MODEL_ALIASES = {
     "qwen3.6:27b-mlx": "mlx-community/Qwen3.6-27B-4bit",
@@ -178,6 +316,19 @@ MODEL_ALIASES = {
 def normalize_model_name(model_name: str) -> str:
     """Map UI-friendly aliases to a valid MLX repo id or local path."""
     return MODEL_ALIASES.get(model_name, model_name)
+
+
+def get_m1_pro_32gb_guidance(model_name: str) -> dict:
+    """Return operational guidance for the target M1 Pro with 32 GB RAM."""
+    normalized = normalize_model_name(model_name)
+    return M1_PRO_32GB_GUIDANCE.get(
+        normalized,
+        {
+            "label": "Custom model",
+            "detail": "Confirm its on-disk and runtime memory needs before a long generation run.",
+            "concurrency": "Load one text model at a time",
+        },
+    )
 
 
 def get_model_info(installed_name: str) -> dict:
@@ -259,12 +410,21 @@ def get_install_commands() -> str:
 # Prerequisites for Gemma 4 (gemma4_unified model type needs mlx-lm from git + optiq)
 pip install -U mlx-optiq "mlx-lm @ git+https://github.com/ml-explore/mlx-lm.git"
 
-# DEFAULT — Gemma 4 12B OptiQ (clean instruction following, less reasoning overhead)
-python -m mlx_lm.chat --model mlx-community/gemma-4-12B-it-OptiQ-4bit  # ~8-10GB, clean JSON + prose
+# PRIMARY — Qwen 3.8 27B OptiQ 4-bit MLX (highest-quality local story model)
+python -m mlx_lm.chat --model mlx-community/Qwen3.8-27B-OptiQ-4bit  # ~15-20GB on disk
+
+# FAST STORY — Gemma 4 E4B IT OptiQ 4-bit MLX
+python -m mlx_lm.chat --model mlx-community/gemma-4-e4b-it-OptiQ-4bit  # ~7.5GB on disk
+
+# UTILITY — Gemma 4 E2B IT 4-bit MLX
+python -m mlx_lm.chat --model mlx-community/gemma-4-e2b-it-4bit  # ~3-5GB on disk
+
+# Higher-quality option for Macs with sufficient unified memory
+python -m mlx_lm.chat --model mlx-community/Qwen3-32B-4bit  # ~18-20GB, excellent creative prose
 
 # Alternatives — lighter / faster iteration
 python -m mlx_lm.generate --model mlx-community/Qwen3.6-27B-4bit --prompt "Sanity check"  # ~14-16GB — lighter 4-bit MLX build for M-series Macs
-python -m mlx_lm.chat --model mlx-community/Qwen3.5-4B-4bit  # ~4-6GB, fast iteration on M-series Macs
+python -m mlx_lm.chat --model mlx-community/Qwen3-8B-4bit  # ~5-6GB, fast iteration on M-series Macs
 
 # Alternative MLX build
 python -m mlx_lm.generate --model qwen3.6:27b-mlx --prompt "Sanity check"      # ~18-20GB — MLX-accelerated for M-series Macs
@@ -306,9 +466,22 @@ def list_local_mlx_models() -> list:
             repo_id = f"{parts[1]}/{'--'.join(parts[2:])}"
         else:
             repo_id = name
-        # Check if the model actually has snapshots downloaded
+        # A repo reference alone only proves that metadata was fetched.  Require
+        # a completed weight file too, so interrupted downloads cannot appear
+        # as selectable "Ready" models in the UI.
         refs_dir = entry / "refs"
         if not refs_dir.is_dir():
+            continue
+        snapshot_names = [
+            ref.read_text(encoding="utf-8").strip()
+            for ref in refs_dir.iterdir()
+            if ref.is_file() and ref.read_text(encoding="utf-8").strip()
+        ]
+        snapshots_dir = entry / "snapshots"
+        if not any(
+            any(path.is_file() and not path.name.endswith(".incomplete") for path in (snapshots_dir / snapshot).glob("*.safetensors"))
+            for snapshot in snapshot_names
+        ):
             continue
         label = format_model_label(repo_id)
         models.append((label, repo_id))

@@ -9,28 +9,41 @@ from src.prompts.system_prompts import (
     NEGATIVE_PROMPT_DEFAULT
 )
 from src.utils.logging_utils import get_logger
-from src.utils.mlx_client import MLXClient
+from src.utils.contracts import TextGenerationBackend
 
 
 LOGGER = get_logger(__name__)
 
+# Visual prompt output is structured into a small fixed set of sections. A
+# bounded response leaves room for the 27B story runtime and Draw Things on a
+# 32 GB unified-memory Mac without sacrificing usable prompt detail.
+VISUAL_PROMPT_MAX_TOKENS = 1200
+
 
 class PromptGenerator:
-    def __init__(self, mlx_client: MLXClient):
+    def __init__(self, mlx_client: TextGenerationBackend):
         self.mlx = mlx_client
     
     def extract_scenes(
         self,
         story: str,
-        max_scenes_per_day: int = 2
+        max_scenes_per_day: int = 2,
+        day_number: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
-        """Extract key scenes from story (heuristic, beat-aware when available)."""
+        """Extract key scenes from a full story or an individual day body.
+
+        The library visual pipeline operates on one parsed day at a time, so
+        ``day_number`` lets callers retain the correct day when the supplied
+        text does not include a ``## DAY`` heading.
+        """
         start = time.perf_counter()
         LOGGER.info("extract_scenes start story_chars=%s max_scenes_per_day=%s", len(story or ""), max_scenes_per_day)
         scenes = []
         # Split by day headers
-        day_pattern = r"## DAY (\d+):\s*([^\n]+)(.*?)(?=## DAY \d+:|$)"
-        day_matches = re.findall(day_pattern, story, re.DOTALL | re.IGNORECASE)
+        day_pattern = r"^## DAY (\d+):\s*([^\n]+)(.*?)(?=^## DAY \d+:|\Z)"
+        day_matches = re.findall(day_pattern, story, re.DOTALL | re.IGNORECASE | re.MULTILINE)
+        if not day_matches and story and day_number is not None:
+            day_matches = [(str(day_number), f"Day {day_number}", story)]
         
         for day_num, day_title, day_content in day_matches:
             beat_blocks = self._extract_beat_blocks(day_content)
@@ -219,7 +232,7 @@ Focus on cinematic Star Wars aesthetic. Gravedancer visual: Kaleesh warrior, bon
             prompt=prompt,
             system=system,
             temperature=temperature,
-            max_tokens=3000
+            max_tokens=VISUAL_PROMPT_MAX_TOKENS
         )
         
         parsed = self._parse_scene_prompts(response, day_number, aspect_ratio)
@@ -338,3 +351,167 @@ Focus on cinematic Star Wars aesthetic. Gravedancer visual: Kaleesh warrior, bon
                     "scene_index": i
                 })
         return results
+
+    def extract_chapters(
+        self,
+        story: str,
+    ) -> List[Dict[str, Any]]:
+        """Extract chapter-level sections from each day of a story.
+
+        Returns a list of dicts with keys: day, day_title, chapter_index,
+        chapter_title, text.
+        """
+        chapters = []
+        day_pattern = r"^## DAY (\d+):\s*([^\n]+)(.*?)(?=^## DAY \d+:|\Z)"
+        for day_num, day_title, day_content in re.findall(day_pattern, story, re.DOTALL | re.IGNORECASE | re.MULTILINE):
+            chapter_pattern = r"(?:^|\n)###\s+(?:Chapter\s+)?(\d+)[:\s]*(.*?)(?=\n###|\n## DAY|\Z)"
+            chapter_matches = re.findall(chapter_pattern, day_content, re.DOTALL | re.IGNORECASE)
+            if not chapter_matches:
+                chapters.append({
+                    "day": int(day_num),
+                    "day_title": day_title.strip(),
+                    "chapter_index": 1,
+                    "chapter_title": "Full Day",
+                    "text": day_content.strip(),
+                })
+            else:
+                for chap_num, chap_title_rest in chapter_matches:
+                    rest = chap_title_rest.strip()
+                    chap_title = rest.split("\n")[0].strip() if rest else f"Chapter {chap_num}"
+                    chap_text = rest[len(chap_title):].strip() if rest else ""
+                    chapters.append({
+                        "day": int(day_num),
+                        "day_title": day_title.strip(),
+                        "chapter_index": int(chap_num),
+                        "chapter_title": chap_title,
+                        "text": chap_text or rest,
+                    })
+        return chapters
+
+    def build_banner_prompt(self, metadata: Dict[str, Any]) -> str:
+        """Build a prompt to generate an episode banner/hero image."""
+        title = metadata.get("title", "Untitled")
+        setting = metadata.get("setting", "Unknown")
+        jedi_name = metadata.get("target_jedi_name") or metadata.get("jedi_name", "Unknown")
+        jedi_species = metadata.get("jedi_species", "Unknown")
+        jedi_rank = metadata.get("jedi_rank", "Unknown")
+        jedi_saber = metadata.get("jedi_lightsaber_color", "Unknown")
+        jedi_personality = metadata.get("jedi_personality", "")
+        tone = ", ".join(metadata.get("tone_focus", [])) or "Star Wars thriller"
+        return f"""Generate a single cinematic banner image prompt for this episode of "Gravedancer to General: Anatomy of a Catastrophe".
+
+**EPISODE TITLE:** {title}
+**SETTING:** {setting}
+**JEDI TARGET:** {jedi_name} ({jedi_species}, {jedi_rank})
+**JEDI SABER:** {jedi_saber}
+**JEDI PERSONALITY:** {jedi_personality}
+**TONE:** {tone}
+
+**REQUIRED OUTPUT:**
+A single clean image prompt only, 80-140 words, no analysis, no bullets, no headings, no notes, no markdown, no internal reasoning.
+Include the Gravedancer, the Jedi target, the setting, the tone, and cinematic Star Wars composition in one polished paragraph.
+"""
+
+    def generate_banner_prompt(
+        self,
+        metadata: Dict[str, Any],
+        model: str,
+        temperature: float = 0.7,
+        system_prompt: Optional[str] = None,
+    ) -> Dict[str, str]:
+        """Generate a banner image prompt for an episode."""
+        prompt_text = self.build_banner_prompt(metadata)
+        system = system_prompt or VISUAL_PROMPT_SYSTEM_PROMPT
+        response = self.mlx.generate(
+            model=model,
+            prompt=prompt_text,
+            system=system,
+            temperature=temperature,
+            max_tokens=1000,
+        )
+        banner = self._clean_visual_prompt(response)
+        return {
+            "banner_prompt": banner,
+            "negative_prompt": NEGATIVE_PROMPT_DEFAULT,
+            "raw_response": response,
+        }
+
+    def _clean_visual_prompt(self, response: str) -> str:
+        """Strip prompt-engineering scaffolding and keep only the final usable prompt."""
+        text = (response or "").strip()
+        if not text:
+            return ""
+
+        text = re.sub(r"(?is)<\|channel\|>.*?(?=\*\*IMAGE PROMPT:\*\*|\Z)", "", text).strip()
+        text = re.sub(r"(?is)^(?:\*\*IMAGE PROMPT:\*\*|IMAGE PROMPT:)\s*", "", text).strip()
+        text = re.sub(r"(?is)^\s*(?:\*\*Final Prompt\*\*|Final Prompt:)\s*", "", text).strip()
+        text = re.sub(r"(?is)\*\*Negative Prompt:\*\*.*$", "", text).strip()
+        text = re.sub(r"(?is)^<\|.*?\|>\s*", "", text).strip()
+        lines = [line.strip() for line in text.splitlines() if line.strip()]
+        lines = [line for line in lines if not line.lower().startswith(("thought", "analysis", "review", "drafting", "optimization"))]
+        return " ".join(lines).strip().strip('"\'')
+
+    def generate_chapter_prompt(
+        self,
+        chapter_text: str,
+        day_number: int,
+        chapter_index: int,
+        chapter_title: str,
+        model: str,
+        aspect_ratio: str = "16:9",
+        temperature: float = 0.7,
+        system_prompt: Optional[str] = None,
+    ) -> Dict[str, str]:
+        """Generate a focused prompt set for one chapter."""
+        prompt = f"""Generate image prompts for this chapter from "Gravedancer to General: Anatomy of a Catastrophe".
+
+**CHAPTER:** Day {day_number}, Chapter {chapter_index}: {chapter_title}
+**ASPECT RATIO:** {aspect_ratio}
+
+**CHAPTER TEXT:**
+{chapter_text}
+
+**REQUIRED OUTPUT — exactly 3 shots:**
+
+**1. Establishing Shot:**
+[60-80 word prompt — wide view of the chapter's primary scene]
+
+**2. Character / Action Shot:**
+[60-80 word prompt — focus on the main character moment or action]
+
+**3. Dramatic / Close-up Shot:**
+[60-80 word prompt — detail shot, emotional beat, or dramatic moment]
+
+**Negative Prompt:** [comma-separated tokens]"""
+        system = system_prompt or VISUAL_PROMPT_SYSTEM_PROMPT
+        response = self.mlx.generate(
+            model=model,
+            prompt=prompt,
+            system=system,
+            temperature=temperature,
+            max_tokens=2000,
+        )
+        parsed = {"day": day_number, "chapter": chapter_index, "aspect_ratio": aspect_ratio}
+        shot_labels = ("Establishing Shot", "Character / Action Shot", "Dramatic / Close-up Shot")
+        for key, label in zip(("wide", "medium", "closeup"), shot_labels):
+            # Accept bold, Markdown-heading, numbered, and unnumbered forms.
+            heading = rf"(?:\*\*\s*(?:\d+\.\s*)?{re.escape(label)}\s*:\s*\*\*|^\s*#+\s*(?:\d+\.\s*)?{re.escape(label)}\s*:?\s*$)"
+            next_heading = "|".join(
+                rf"(?:\*\*\s*(?:\d+\.\s*)?{re.escape(other)}\s*:\s*\*\*|^\s*#+\s*(?:\d+\.\s*)?{re.escape(other)}\s*:?\s*$)"
+                for other in (*shot_labels, "Negative Prompt")
+                if other != label
+            )
+            m = re.search(rf"{heading}\s*(.*?)(?={next_heading}|\Z)", response, re.DOTALL | re.IGNORECASE | re.MULTILINE)
+            if not m:
+                # Gemma commonly emits a `### Scene N` wrapper followed by a
+                # `#### N. Shot Name (variant)` heading and `**Prompt:**`.
+                m = re.search(
+                    rf"^\s*#{{2,6}}[ \t]*(?:\d+\.[ \t]*)?{re.escape(label)}(?:[ \t]*\([^\n)]*\))?[ \t]*:?[^\n]*\n+(.*?)(?=^\s*#{{2,6}}\s*(?:Scene\s+\d+|(?:\d+\.\s*)?(?:{'|'.join(map(re.escape, shot_labels))}|Negative Prompt))|\Z)",
+                    response,
+                    re.DOTALL | re.IGNORECASE | re.MULTILINE,
+                )
+            parsed[key] = m.group(1).strip() if m else ""
+        neg_m = re.search(r"(?:\*\*\s*Negative Prompt\s*:\s*\*\*|^\s*#+\s*Negative Prompt\s*:?\s*$)\s*(.*?)$", response, re.DOTALL | re.IGNORECASE | re.MULTILINE)
+        parsed["negative_prompt"] = neg_m.group(1).strip() if neg_m else NEGATIVE_PROMPT_DEFAULT
+        parsed["raw_response"] = response
+        return parsed

@@ -22,22 +22,8 @@ import time
 import io
 from typing import Dict, Any, Optional, List, Tuple
 
-try:
-    import streamlit as st
-except ModuleNotFoundError:  # pragma: no cover - allows headless tests
-    class _StreamlitFallback:
-        @staticmethod
-        def cache_resource(func=None):
-            if func is None:
-                def decorator(inner):
-                    return inner
-                return decorator
-            return func
-
-    st = _StreamlitFallback()
-
 # Ports Draw Things is known to use. Sidebar probes these in order.
-DEFAULT_DT_PORTS: Tuple[int, ...] = (7860, 7001)
+DEFAULT_DT_PORTS: Tuple[int, ...] = (7859, 7860, 7001)
 
 
 def _requests():
@@ -59,13 +45,18 @@ class DrawThingsClient:
     # ----- low-level helpers -------------------------------------------------
 
     def _request(self, method: str, url: str, **kwargs):
-        """HTTP request with a couple of retries on transient connection errors."""
+        """HTTP request with retries limited to connection-level failures.
+
+        Timed-out requests are never retried: a slow-but-successful generation
+        render would otherwise be issued a second time.
+        """
         requests = _requests()
+        timeout = kwargs.pop("timeout", 300)
         last_err: Optional[Exception] = None
         for attempt in range(3):
             try:
-                return requests.request(method, url, timeout=kwargs.pop("timeout", 300), **kwargs)
-            except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
+                return requests.request(method, url, timeout=timeout, **kwargs)
+            except requests.exceptions.ConnectionError as e:
                 last_err = e
                 if attempt < 2:
                     time.sleep(1.0)
@@ -119,20 +110,11 @@ class DrawThingsClient:
         if not match:
             return False
         try:
-            self._request("POST", self.options, json={"sd_model_checkpoint": match}, timeout=30)
+            response = self._request("POST", self.options, json={"sd_model_checkpoint": match}, timeout=30)
+            response.raise_for_status()
             return True
         except Exception:
             return False
-
-    def list_samplers(self) -> List[str]:
-        try:
-            r = self._request("GET", self.samplers, timeout=5)
-            if r.status_code != 200:
-                return []
-            data = r.json()
-            return [s.get("name", str(s)) if isinstance(s, dict) else str(s) for s in data]
-        except Exception:
-            return []
 
     # ----- generation --------------------------------------------------------
 
@@ -249,7 +231,6 @@ class DrawThingsClient:
             return {"fallback": True, "info": f"Video generation call failed: {e}", "raw": {}}
 
 
-@st.cache_resource
 def get_drawthings_client(base_url: str = f"http://localhost:{DEFAULT_DT_PORTS[0]}") -> DrawThingsClient:
-    """Cached singleton. Keyed on base_url so changing the URL rebuilds it."""
+    """Create a Draw Things client for the requested base URL."""
     return DrawThingsClient(base_url)

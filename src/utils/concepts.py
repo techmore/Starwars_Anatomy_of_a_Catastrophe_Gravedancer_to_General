@@ -9,6 +9,7 @@ import json
 import re
 from typing import Dict, Any, List, Tuple
 from src.utils.prompt_schema import validate_concept_dict
+from src.utils.prompt_schema import TARGET_WORDS_PER_DAY
 
 # Canonical tone options — shared between the manual multiselect and the
 # concept parser's whitelist. Keep in sync with the Story tab.
@@ -30,7 +31,7 @@ VALID_TONES = [
 ]
 
 # Target novella length — kept here so concept + story prompts agree.
-TARGET_WORDS = 7500
+TARGET_WORDS = TARGET_WORDS_PER_DAY
 
 
 _REASONING_STARTER = re.compile(
@@ -545,23 +546,3 @@ def try_parse_full_episode_concept(response: str, fallback_text: str = "") -> Tu
 
     errors = validate_concept_dict(concept)
     return concept, errors
-
-
-def parse_full_episode_concept(response: str, fallback_text: str = "") -> Dict[str, Any]:
-    """Parse LLM response into an episode concept dict.
-
-    Strips markdown bold/italic from every value so metadata never carries
-    stray ``**`` markers that double-format on render.
-
-    When *fallback_text* is provided (the rich creative prose from the
-    context pass), missing fields are extracted from it via prose-specific
-    regex patterns as a second-chance mechanism.
-
-    Raises ``ValueError`` on validation failure.  Use
-    :func:`try_parse_full_episode_concept` if you need to inspect missing
-    fields without an exception.
-    """
-    concept, errors = try_parse_full_episode_concept(response, fallback_text)
-    if errors:
-        raise ValueError(f"Invalid concept output: {', '.join(errors)}")
-    return concept

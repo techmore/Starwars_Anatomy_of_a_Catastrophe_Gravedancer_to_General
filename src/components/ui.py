@@ -4,6 +4,7 @@ Kept dependency-free except for streamlit so any tab can import it safely.
 """
 
 import base64
+from html import escape
 import streamlit as st
 
 # Aspect ratio -> (width, height) pairs tuned for Flux.2 Klein 4b.
@@ -31,24 +32,23 @@ def video_dims_for(aspect_ratio: str) -> tuple:
     return (832, 480)
 
 
+def preformatted_html(text: object) -> str:
+    """Build a safe preformatted block for model/user-provided text."""
+    return f"<pre class='pre-wrap'>{escape(str(text or ''))}</pre>"
+
+
 def copy_button(text: str, label: str = "Copy", key: str | None = None, small: bool = True) -> None:
     """Render a one-click copy-to-clipboard button next to a prompt block.
 
-    Uses ``streamlit.components.v1.html`` so the ``<script>`` tag survives
-    Streamlit's sanitizer (``st.markdown`` strips scripts).
+    Uses ``st.html`` with JavaScript enabled so the copy interaction remains
+    on Streamlit's supported HTML API.
     """
     import uuid
-    try:
-        from streamlit.components.v1 import html as stc_html
-    except ImportError:
-        from streamlit.components.v1 import components as stc_mod
-        stc_html = stc_mod.html
-
     uid = (key or "cp") + "-" + uuid.uuid4().hex[:8]
     btn_classes = "sw-copy-btn" + (" sw-copy-btn-sm" if small else "")
     payload = base64.b64encode(text.encode("utf-8")).decode("ascii")
 
-    stc_html(
+    st.html(
         f"""
         <button id="{uid}" type="button" class="{btn_classes}"
                 aria-label="Copy {label} to clipboard">📋 {label}</button>
@@ -85,7 +85,8 @@ def copy_button(text: str, label: str = "Copy", key: str | None = None, small: b
             }})();
         </script>
         """,
-        height=40,
+        width="content",
+        unsafe_allow_javascript=True,
     )
 
 

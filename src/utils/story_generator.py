@@ -1,12 +1,12 @@
 """Story generation logic using MLX."""
 
-from typing import Dict, Any, Optional, List
+from typing import Callable, Dict, Any, Optional, List
 import json
 import re
 import time
+import os
 from src.prompts.system_prompts import STORY_GENERATION_SYSTEM_PROMPT
 from src.utils.prompt_schema import (
-    STORY_CONTINUITY_HEADER,
     STORY_DAY_EXPANSION_HEADER,
     STORY_DAY_HEADING,
     STORY_EPISODE_ARC_HEADER,
@@ -14,6 +14,7 @@ from src.utils.prompt_schema import (
     STORY_OUTLINE_HEADER,
     STORY_SECTION_EXPANSION_HEADER,
     STORY_TONE_LINE,
+    DAILY_TARGET_TOKENS,
     TARGET_WORDS_PER_DAY,
     build_story_constraints_block,
     build_story_deepening_block,
@@ -25,14 +26,80 @@ from src.utils.prompt_schema import (
     validate_story_prompt_inputs,
 )
 from src.utils.logging_utils import get_logger
-from src.utils.mlx_client import MLXClient
+from src.utils.contracts import ProgressCallback, TextGenerationBackend
 
 
 LOGGER = get_logger(__name__)
 
+# M1 Pro / 32 GB operational ceilings. The structured workflow generates one
+# outline or chapter at a time, so these limits keep KV-cache growth and long
+# runaway responses bounded while leaving enough headroom for the requested
+# ~1,500-word chapter target.
+# A three-day outline needs about 60 explicit beat lines; 3,000 tokens leaves
+# room for the arc and headings while preventing a thinking model from
+# spending many minutes on an overlong planning response.
+OUTLINE_MAX_TOKENS = 5000
+# Five chapters/day at roughly 1,400-1,600 words/chapter is enough to meet the
+# product target. A tighter ceiling gives Bonsai a clear stopping point before
+# it starts filling the remaining budget with repeated combat/dialogue loops.
+SECTION_MAX_TOKENS = 4500
+
+OUTLINE_RECOVERY_ATTEMPTS = 3
+
+
+def _retry_outline(
+    gen: Callable[[], str],
+    expected_days: int,
+    attempts: int,
+    on_attempt: Callable[[int, int], None] | None = None,
+) -> tuple[str, List[str]]:
+    """Call ``gen`` until the outline validates or attempts are exhausted.
+
+    Qwen/Gemma GGUFs served by Ollama occasionally EOS-truncate mid-structure;
+    a single rebuild then killed the whole episode. Retrying the same prompt a
+    few times (costing only one outline pass each) turns a hard crash into a
+    transient blip. Returns ``(outline, errors)``; errors is empty on success.
+    """
+    outline = ""
+    errors: List[str] = ["no attempt made"]
+    for attempt in range(1, attempts + 1):
+        if on_attempt:
+            on_attempt(attempt, attempts)
+        outline = gen()
+        errors = validate_outline_structure(outline, expected_days=expected_days)
+        if not errors:
+            return outline, []
+        if attempt < attempts:
+            LOGGER.warning(
+                "outline attempt invalid attempt=%s/%s errors=%s",
+                attempt,
+                attempts,
+                errors[:3],
+            )
+    return outline, errors
+
+
+class GenerationCancelled(RuntimeError):
+    """Raised when a cooperative cancellation sentinel is detected."""
+
+
+def _cancellation_requested() -> bool:
+    """Check the optional local sentinel between model requests."""
+    sentinel = os.environ.get("GRAVEDANCER_CANCEL_FILE", "").strip()
+    return bool(sentinel) and os.path.isfile(os.path.expanduser(sentinel))
+
+
+def outline_token_budget(num_days: int, requested: int | None = None) -> int:
+    """Choose enough outline budget for all requested days without runaway output."""
+    if requested:
+        return requested
+    # Five chapters × four beats per day plus headings, purposes, and hooks.
+    # Keep the cap below the LM Studio ceiling used by the local workflow.
+    return min(8000, max(OUTLINE_MAX_TOKENS, int(num_days) * 1400))
+
 
 class StoryGenerator:
-    def __init__(self, mlx_client: MLXClient):
+    def __init__(self, mlx_client: TextGenerationBackend):
         self.mlx = mlx_client
     
     def build_prompt(
@@ -129,21 +196,40 @@ Return a structured outline with TWO sections:
 Each day must have this format:
 ## DAY 1: [Short Title]
 - Purpose: [why this day matters in the episode arc]
-- Beat 1: [2-4 sentences describing what happens, the tension point, and the micro-hook that drives into Beat 2]
-- Beat 2: [2-4 sentences]
-- Beat 3: [2-4 sentences]
-- (Beat 4, Beat 5 optional — 3 to 5 beats per day)
+- Chapter 1:
+  - Beat 1: [one concise sentence]
+  - Beat 2: [one concise sentence]
+  - Beat 3: [one concise sentence]
+  - Beat 4: [one concise sentence]
+- Chapter 2:
+  - Beat 1: [one concise sentence]
+  - Beat 2: [one concise sentence]
+  - Beat 3: [one concise sentence]
+  - Beat 4: [one concise sentence]
+- Chapter 3:
+  - Beat 1: [one concise sentence]
+  - Beat 2: [one concise sentence]
+  - Beat 3: [one concise sentence]
+  - Beat 4: [one concise sentence]
+- Chapter 4: [same four-beat format]
+- Chapter 5: [same four-beat format]
 - Ending hook: [1-2 sentences — what pulls the reader into the next day]
 
 Rules:
-- Each day must have 3 to 5 beats. Each beat must be 2-4 sentences of concrete scene guidance — NOT a one-liner. Describe what happens, why it matters, and what tension it creates.
-- The beats should be specific enough that a later expansion pass can write prose from them without inventing new plot turns.
+- The outline must include ALL requested days, in order, with no omissions.
+- Do not stop after Day 1 or Day 2. Continue until every day is present.
+- Each day must have exactly 10 chapters. Each chapter must have exactly 4 concise beats. Each beat should be specific enough that a later expansion pass can write prose from it without inventing new plot turns.
+- Make the beats explicit with "Beat 1", "Beat 2", etc. under every chapter.
+- Every day must include an ending hook, even if it is only one sentence.
 - Treat each day as a self-contained thriller chapter with its own escalation arc.
+- The final day must resolve the episode arc decisively.
 - Keep the overall episode arc coherent across all days.
 - Preserve continuity of locations, injuries, emotional state, and Jedi capabilities.
 - Use the beats to stage the day's internal rhythm: setup, pressure, escalation, reversal, hook.
 - Keep Day 1 setup strong and the final day decisive.
-- The Jedi target DIES on the final day unless the tone explicitly says 'Ongoing pursuit (no kill)'.
+- The final outcome is determined by the approved concept. A kill is optional;
+  allowed outcomes include death, escape, partial victory, continuing pursuit,
+  the Jedi turning the tables, or a transformation choice.
 - Do NOT include meta-commentary, notes, or thinking before the episode arc. Start directly with "{STORY_EPISODE_ARC_HEADER}".
 {additional_section}
 """
@@ -196,10 +282,10 @@ Write only the prose for Day {day_number}, with the heading:
 ## DAY {day_number}: [Descriptive Title]
 
 Requirements:
-- Write approximately 7,500 words for this day (roughly 30-40 paragraphs).
-- Expand each beat into a distinct scene sequence.
-- Keep the beats from the outline in order.
-- Turn each beat into a small cause-and-effect micro-sequence instead of a vague mood paragraph.
+- Write approximately {DAILY_TARGET_TOKENS:,} output tokens for this day (roughly {TARGET_WORDS_PER_DAY:,} words).
+- Expand each chapter into a distinct scene sequence.
+- Keep the chapters from the outline in order.
+- Turn each chapter into a small cause-and-effect micro-sequence instead of a vague mood paragraph.
 - Do not invent new major plot turns.
 - Maintain continuity with prior days and the episode arc.
 - Use thriller pacing, tactical detail, sensory immersion, and cinematic dialogue.
@@ -222,7 +308,7 @@ Requirements:
         tone_focus: List[str],
         additional_instructions: str,
     ) -> str:
-        """Build a focused prompt to expand one section outline into prose."""
+        """Build a focused prompt to expand one chapter outline into prose."""
         errors = validate_story_prompt_inputs(
             title=title,
             num_days=num_days,
@@ -251,65 +337,24 @@ Requirements:
 {section_outline}
 {prior_section}
 
-Write only the prose for this section. Requirements:
+Write only the prose for this section. Begin with a Markdown chapter heading in
+this form, using a short descriptive title based on the approved outline:
+### Chapter {section_index}: [Descriptive Title]
+Then write the prose. Requirements:
 - Continue the story seamlessly from the prior prose.
 - Keep this section focused on the provided outline.
 - Do not invent a new major beat.
+- Do not repeat sentences, beats, or phrasing from the prior prose unless the repetition is intentionally dramatic and introduces new information.
+- Never repeat an entire paragraph, sentence, dialogue exchange, or action sequence within this section. If a beat is complete, advance to the next beat or stop; do not fill the token budget.
+- Every paragraph must introduce a new physical action, sensory change, decision, revelation, or consequence. Do not use stock loops such as "He paused", "The Jedi's shield held", or repeated statements of the same intention.
+- Treat the four beats as a one-way cause-and-effect sequence. The section must not return to an earlier beat or reset the same confrontation.
 - Write vivid, cinematic prose with thriller pacing.
 - Preserve names, injuries, object locations, and emotional state.
 - Write approximately {section_word_target:,} words for this section.
 - Structure the section as a compact chapter with 2-4 micro-beat-sized movements.
+- Do not add a new chapter heading or a Day heading inside the section.
 """
 
-    def build_continuity_prompt(self, outline: str, day_text: str, day_number: int) -> str:
-        """Build a light continuity cleanup prompt for a finished day."""
-        return f"""{STORY_CONTINUITY_HEADER.format(day_number=day_number)} Keep the story's meaning, tone, and structure intact. Do not summarize; output the revised prose only.
-
-**OUTLINE:**
-{outline}
-
-**DAY {day_number} PROSE:**
-{day_text}
-"""
-
-    def regenerate_day_from_draft(
-        self,
-        model: str,
-        day_number: int,
-        day_draft: str,
-        outline: str,
-        title: str,
-        num_days: int,
-        jedi_details: Dict[str, str],
-        setting: str,
-        tone_focus: List[str],
-        additional_instructions: str,
-        previous_day: str = "",
-        temperature: float = 0.8,
-        system_prompt: Optional[str] = None,
-    ) -> str:
-        """Regenerate a single day using the assembled draft as the source input."""
-        prompt = self.build_day_expansion_prompt(
-            title=title,
-            num_days=num_days,
-            outline=outline,
-            day_number=day_number,
-            day_outline=day_draft,
-            day_draft=day_draft,
-            previous_day=previous_day,
-            jedi_details=jedi_details,
-            setting=setting,
-            tone_focus=tone_focus,
-            additional_instructions=additional_instructions,
-        )
-        return self.mlx.generate(
-            model=model,
-            prompt=prompt,
-            system=system_prompt or STORY_GENERATION_SYSTEM_PROMPT,
-            temperature=temperature,
-            max_tokens=max(8000, 11000),
-        )
-    
     def generate_story(
         self,
         model: str,
@@ -332,9 +377,10 @@ Write only the prose for this section. Requirements:
             title, num_days, jedi_details, setting, tone_focus, additional_instructions
         )
         system = system_prompt or STORY_GENERATION_SYSTEM_PROMPT
-        
-        # Sized for a much longer per-day target (~7,500 words/day).
-        # Keep generous headroom so the model can breathe without truncation.
+
+        # Legacy single-pass budget: one request for the whole episode.
+        # Behavior preserved from prior releases; HTTP backends clamp this to
+        # their own output ceiling (e.g. LM Studio's 8192).
         max_tokens = max(12000, num_days * 11000)
         
         LOGGER.warning(
@@ -363,11 +409,12 @@ Write only the prose for this section. Requirements:
         additional_instructions: str,
         temperature: float = 0.5,
         system_prompt: Optional[str] = None,
-        progress_callback: Optional[callable] = None,
+        progress_callback: ProgressCallback | None = None,
+        max_tokens: int | None = None,
     ) -> str:
         prompt = self.build_outline_prompt(title, num_days, jedi_details, setting, tone_focus, additional_instructions)
         system = system_prompt or STORY_GENERATION_SYSTEM_PROMPT
-        max_tokens = 2500
+        max_tokens = outline_token_budget(num_days, max_tokens)
         LOGGER.info(
             "story outline start title=%s days=%s model=%s prompt_chars=%s system_chars=%s max_tokens=%s temperature=%.2f",
             title,
@@ -381,14 +428,19 @@ Write only the prose for this section. Requirements:
         start = time.perf_counter()
         if progress_callback:
             chunks: List[str] = []
-            collected = ""
+            # Throttled snapshot join — see _stream_generate for rationale.
+            last_snapshot = 0.0
             for chunk in self.mlx.generate_stream(
                 model=model, prompt=prompt, system=system,
                 temperature=temperature, max_tokens=max_tokens,
             ):
                 chunks.append(chunk)
-                collected += chunk
-                progress_callback(stage="outline", message="Building episode outline...", text=collected)
+                now = time.perf_counter()
+                if now - last_snapshot >= 0.5:
+                    last_snapshot = now
+                    progress_callback(stage="outline", message="Building episode outline...", text="".join(chunks))
+                else:
+                    progress_callback(stage="outline", message="Building episode outline...")
             outline = "".join(chunks)
         else:
             outline = self.mlx.generate(model=model, prompt=prompt, system=system, temperature=temperature, max_tokens=max_tokens)
@@ -409,7 +461,10 @@ Write only the prose for this section. Requirements:
         outline: Optional[str] = None,
         day_drafts: Optional[Dict[int, str]] = None,
         draft_only: bool = False,
-        progress_callback: Optional[Any] = None,
+        progress_callback: ProgressCallback | None = None,
+        outline_max_tokens: int | None = None,
+        section_max_tokens: int | None = None,
+        checkpoint_callback: Callable[[int, str], None] | None = None,
     ) -> str:
         """Generate outline first, then expand each day."""
         LOGGER.info(
@@ -438,7 +493,11 @@ Write only the prose for this section. Requirements:
         ) -> str:
             _emit(stage, message)
             chunks: List[str] = []
-            collected = ""
+            # Joining every chunk is O(n^2) across a long stream; consumers
+            # only sample the text on a timer, so refresh the snapshot at
+            # most twice per second and emit without text in between.
+            last_snapshot = 0.0
+            text_snapshot = ""
             for chunk in self.mlx.generate_stream(
                 model=model,
                 prompt=prompt,
@@ -447,8 +506,13 @@ Write only the prose for this section. Requirements:
                 max_tokens=max_tokens,
             ):
                 chunks.append(chunk)
-                collected += chunk
-                _emit(stage, message, collected)
+                now = time.perf_counter()
+                if now - last_snapshot >= 0.5:
+                    text_snapshot = "".join(chunks)
+                    last_snapshot = now
+                    _emit(stage, message, text_snapshot)
+                else:
+                    _emit(stage, message)
             return "".join(chunks)
 
         if not outline:
@@ -459,34 +523,107 @@ Write only the prose for this section. Requirements:
                 num_days,
                 model,
                 max(0.2, temperature - 0.2),
-                2500,
+                OUTLINE_MAX_TOKENS,
             )
-            outline = _stream_generate(
-                stage="outline",
-                message="Building episode outline...",
-                model=model,
-                prompt=self.build_outline_prompt(
-                    title=title,
-                    num_days=num_days,
-                    jedi_details=jedi_details,
-                    setting=setting,
-                    tone_focus=tone_focus,
-                    additional_instructions=additional_instructions,
-                ),
-                system_prompt=system_prompt,
-                temperature=max(0.2, temperature - 0.2),
-                max_tokens=4000,
+            def _gen_outline() -> str:
+                return _stream_generate(
+                    stage="outline",
+                    message="Building episode outline...",
+                    model=model,
+                    prompt=self.build_outline_prompt(
+                        title=title,
+                        num_days=num_days,
+                        jedi_details=jedi_details,
+                        setting=setting,
+                        tone_focus=tone_focus,
+                        additional_instructions=additional_instructions,
+                    ),
+                    system_prompt=system_prompt,
+                    temperature=max(0.2, temperature - 0.2),
+                    max_tokens=outline_token_budget(num_days, outline_max_tokens),
+                )
+
+            def _on_outline_attempt(attempt: int, total: int) -> None:
+                if attempt > 1:
+                    _emit("outline", f"Outline incomplete — retrying ({attempt}/{total})...")
+
+            outline, outline_errors = _retry_outline(
+                _gen_outline, num_days, OUTLINE_RECOVERY_ATTEMPTS, _on_outline_attempt
             )
+            if outline_errors:
+                raise ValueError(
+                    f"Invalid outline structure after {OUTLINE_RECOVERY_ATTEMPTS} attempts: {', '.join(outline_errors)}"
+                )
+            LOGGER.info(
+                "outline pass end title=%s days=%s chars=%s elapsed=%.3fs",
+                title,
+                num_days,
+                len(outline),
+                time.perf_counter() - outline_start,
+            )
+            _emit("outline", f"Outline ready ({len(outline):,} chars).")
+        else:
             outline_errors = validate_outline_structure(outline, expected_days=num_days)
             if outline_errors:
-                raise ValueError(f"Invalid outline structure: {', '.join(outline_errors)}")
-            LOGGER.info("outline pass end title=%s chars=%s elapsed=%.3fs", title, len(outline), time.perf_counter() - outline_start)
-            _emit("outline", f"Outline ready ({len(outline):,} chars).")
+                LOGGER.warning(
+                    "Discarding invalid cached outline title=%s days=%s errors=%s",
+                    title,
+                    num_days,
+                    outline_errors,
+                )
+                _emit("outline", "Cached outline was incomplete; rebuilding the outline.")
+                outline_start = time.perf_counter()
+                LOGGER.info(
+                    "outline recovery pass begin title=%s days=%s model=%s max_tokens=%s",
+                    title,
+                    num_days,
+                    model,
+                    outline_token_budget(num_days, outline_max_tokens),
+                )
+
+                def _gen_recovered() -> str:
+                    return _stream_generate(
+                        stage="outline",
+                        message="Rebuilding incomplete outline...",
+                        model=model,
+                        prompt=self.build_outline_prompt(
+                            title=title,
+                            num_days=num_days,
+                            jedi_details=jedi_details,
+                            setting=setting,
+                            tone_focus=tone_focus,
+                            additional_instructions=additional_instructions,
+                        ),
+                        system_prompt=system_prompt,
+                        temperature=max(0.2, temperature - 0.2),
+                        max_tokens=outline_token_budget(num_days, outline_max_tokens),
+                    )
+
+                def _on_recover_attempt(attempt: int, total: int) -> None:
+                    if attempt > 1:
+                        _emit("outline", f"Rebuild incomplete — retrying ({attempt}/{total})...")
+
+                outline, outline_errors = _retry_outline(
+                    _gen_recovered, num_days, OUTLINE_RECOVERY_ATTEMPTS, _on_recover_attempt
+                )
+                if outline_errors:
+                    raise ValueError(
+                        f"Invalid rebuilt outline structure after {OUTLINE_RECOVERY_ATTEMPTS} attempts: {', '.join(outline_errors)}"
+                    )
+                LOGGER.info(
+                    "outline recovery pass end title=%s days=%s chars=%s elapsed=%.3fs",
+                    title,
+                    num_days,
+                    len(outline),
+                    time.perf_counter() - outline_start,
+                )
         day_blocks = self._split_outline_days(outline)
         day_stories: List[str] = []
         previous_day = ""
         for day_number in range(1, num_days + 1):
-            day_outline = day_blocks.get(day_number, "")
+            if _cancellation_requested():
+                raise GenerationCancelled("Generation cancelled before the next day; checkpoint preserved.")
+            day_outline = day_blocks.get(day_number, "").strip()
             day_draft = (day_drafts or {}).get(day_number, "")
             _emit("day", f"Expanding Day {day_number}/{num_days}...")
             day_start = time.perf_counter()
@@ -500,38 +637,21 @@ Write only the prose for this section. Requirements:
                 len(previous_day),
             )
             if draft_only and day_draft.strip():
-                _emit("section", f"Using assembled draft for Day {day_number}.")
-                LOGGER.info("day draft mode begin title=%s day=%s draft_chars=%s", title, day_number, len(day_draft))
-                day_text = _stream_generate(
-                    stage=f"day-{day_number}",
-                    message=f"Streaming Day {day_number} draft...",
-                    model=model,
-                    prompt=self.build_day_expansion_prompt(
-                        title=title,
-                        num_days=num_days,
-                        outline=outline,
-                        day_number=day_number,
-                        day_outline=day_outline,
-                        day_draft=day_draft,
-                        previous_day=previous_day,
-                        jedi_details=jedi_details,
-                        setting=setting,
-                        tone_focus=tone_focus,
-                        additional_instructions=additional_instructions,
-                    ),
-                    system_prompt=system_prompt,
-                    temperature=temperature,
-                    max_tokens=14000,
-                )
-                LOGGER.info("day draft mode end title=%s day=%s elapsed=%.3fs output_chars=%s", title, day_number, time.perf_counter() - day_start, len(day_text))
+                _emit("checkpoint", f"Reusing checkpoint for Day {day_number}.")
+                LOGGER.info("day checkpoint reused title=%s day=%s draft_chars=%s", title, day_number, len(day_draft))
+                day_text = day_draft.strip()
             else:
                 section_blocks = self._split_day_sections(day_outline)
                 section_texts: List[str] = []
-                prior_text = previous_day
+                # Keep only a short continuity tail so the model does not start echoing prior sections.
+                prior_text = self._tail_for_context(previous_day, max_chars=2500)
                 LOGGER.info("day section loop begin title=%s day=%s section_count=%s", title, day_number, len(section_blocks))
                 for section_index, section_outline in enumerate(section_blocks, start=1):
+                    if _cancellation_requested():
+                        raise GenerationCancelled("Generation cancelled before the next section; checkpoint preserved.")
                     _emit("section", f"Day {day_number}: expanding section {section_index}/{len(section_blocks)}")
                     section_start = time.perf_counter()
+                    context_tail = self._tail_for_context(prior_text, max_chars=1800)
                     LOGGER.info(
                         "section pass begin title=%s day=%s section=%s/%s section_chars=%s prior_chars=%s",
                         title,
@@ -539,7 +659,7 @@ Write only the prose for this section. Requirements:
                         section_index,
                         len(section_blocks),
                         len(section_outline),
-                        len(prior_text),
+                        len(context_tail),
                     )
                     section_prompt = self.build_section_expansion_prompt(
                         title=title,
@@ -549,7 +669,7 @@ Write only the prose for this section. Requirements:
                         section_index=section_index,
                         section_count=len(section_blocks),
                         section_outline=section_outline,
-                        prior_text=prior_text,
+                        prior_text=context_tail,
                         day_outline=day_outline,
                         jedi_details=jedi_details,
                         setting=setting,
@@ -563,10 +683,11 @@ Write only the prose for this section. Requirements:
                         prompt=section_prompt,
                         system_prompt=system_prompt,
                         temperature=temperature,
-                        max_tokens=6000,
+                        max_tokens=section_max_tokens or SECTION_MAX_TOKENS,
                     )
+                    section_text = self._strip_embedded_day_headings(section_text)
                     section_texts.append(section_text.strip())
-                    prior_text = section_text.strip()
+                    prior_text = self._tail_for_context(section_text, max_chars=2500)
                     section_word_count = len(section_text.split())
                     section_word_target = TARGET_WORDS_PER_DAY // max(len(section_blocks), 1)
                     LOGGER.info(
@@ -578,28 +699,11 @@ Write only the prose for this section. Requirements:
                         section_word_count,
                         section_word_count / max(section_word_target, 1),
                     )
-                _emit("continuity", f"Cleaning continuity for Day {day_number}...")
+                day_text = "\n\n".join(section_texts)
                 LOGGER.info(
-                    "continuity pass begin title=%s day=%s section_output_chars=%s",
+                    "continuity pass skipped title=%s day=%s section_output_chars=%s",
                     title,
                     day_number,
-                    sum(len(part) for part in section_texts),
-                )
-                continuity_start = time.perf_counter()
-                day_text = _stream_generate(
-                    stage=f"day-{day_number}-continuity",
-                    message=f"Streaming Day {day_number} continuity pass...",
-                    model=model,
-                    prompt=self.build_continuity_prompt(outline, "\n\n".join(section_texts), day_number),
-                    system_prompt=system_prompt,
-                    temperature=max(0.2, temperature - 0.1),
-                    max_tokens=max(6000, len("\n\n".join(section_texts)) // 3 + 1000),
-                )
-                LOGGER.info(
-                    "continuity pass end title=%s day=%s elapsed=%.3fs output_chars=%s",
-                    title,
-                    day_number,
-                    time.perf_counter() - continuity_start,
                     len(day_text),
                 )
             if not day_text.lstrip().startswith(f"## DAY {day_number}:"):
@@ -607,6 +711,8 @@ Write only the prose for this section. Requirements:
                 day_text = f"## DAY {day_number}: {day_title}\n\n{day_text.strip()}"
             day_stories.append(day_text.strip())
             previous_day = day_text.strip()
+            if checkpoint_callback:
+                checkpoint_callback(day_number, day_text.strip())
             day_word_count = len(day_text.split())
             day_word_ratio = day_word_count / TARGET_WORDS_PER_DAY
             LOGGER.info(
@@ -641,23 +747,73 @@ Write only the prose for this section. Requirements:
         return blocks
 
     def _split_day_sections(self, day_outline: str) -> List[str]:
-        """Extract section outline lines from a day outline block."""
-        lines = [line.strip() for line in day_outline.splitlines() if line.strip()]
-        sections: List[str] = []
-        capture = False
-        for line in lines:
-            stripped = line.lstrip("- \t")
-            lower = stripped.lower()
-            if lower.startswith("beat "):
-                capture = True
-                sections.append(stripped)
-            elif capture and not lower.startswith("ending hook") and not lower.startswith("purpose"):
-                sections[-1] += f" {stripped}"
-            elif lower.startswith("ending hook"):
-                pass
-        if not sections and day_outline.strip():
-            sections = [day_outline.strip()]
-        return sections
+        """Extract chapter outline blocks from a day outline block."""
+        text = day_outline.strip()
+        if not text:
+            return []
+        chapter_pattern = r"(?:^- Chapter\s+\d+:\s*.*?)(?=^- Chapter\s+\d+:|^- Ending hook:|\Z)"
+        chapter_blocks = [
+            block.strip()
+            for block in re.findall(chapter_pattern, text, re.IGNORECASE | re.MULTILINE | re.DOTALL)
+            if block.strip()
+        ]
+        if chapter_blocks:
+            return [self._normalize_chapter_outline(block) for block in chapter_blocks]
+        return [text]
+
+    def _normalize_chapter_outline(self, chapter_outline: str) -> str:
+        """Ensure a chapter outline has explicit beat markers when possible.
+
+        If the model wrote prose-like chapter guidance without beat labels,
+        this heuristically splits it into labeled beats without inventing
+        repeated filler text.
+        """
+        text = chapter_outline.strip()
+        if not text:
+            return text
+        if re.search(r"\bBeat\s+\d+:", text, re.IGNORECASE):
+            return text
+
+        lines = [line.strip() for line in text.splitlines() if line.strip()]
+        if not lines:
+            return text
+
+        header = lines[0]
+        body = " ".join(lines[1:]).strip()
+        if not body:
+            return text
+
+        sentences = re.split(r"(?<=[.!?])\s+", body)
+        sentences = [s.strip() for s in sentences if s.strip()]
+        if not sentences:
+            sentences = [body]
+
+        beat_count = min(max(len(sentences), 4), 8)
+        chunks: List[str] = []
+        for idx in range(beat_count):
+            if idx >= len(sentences):
+                break
+            sentence = sentences[idx]
+            chunks.append(f"- Beat {idx + 1}: {sentence}")
+        return "\n".join([header, *chunks])
+
+    def _tail_for_context(self, text: str, max_chars: int = 2500) -> str:
+        """Keep only the most recent prose for continuity without echoing the whole section."""
+        clean = text.strip()
+        if len(clean) <= max_chars:
+            return clean
+        tail = clean[-max_chars:]
+        cut = tail.find("\n\n")
+        return tail[cut + 2 :] if cut != -1 and cut + 2 < len(tail) else tail
+
+    def _strip_embedded_day_headings(self, text: str) -> str:
+        """Remove model-added day headings from chapter-only generation.
+
+        The caller owns the single ``## DAY n`` heading.  Leaving headings
+        emitted by individual chapter calls in place makes viewers interpret
+        one day as several separate days.
+        """
+        return re.sub(r"(?im)^\s*##\s*DAY\s+\d+\s*:[^\n]*\n?", "", text).strip()
 
     def _extract_day_title(self, day_outline: str, day_number: int) -> str:
         first_line = next((line.strip() for line in day_outline.splitlines() if line.strip()), "")
@@ -709,12 +865,12 @@ Write only the prose for this section. Requirements:
         return days
 
     def _parse_day_sections(self, lines: List[str]) -> List[Dict[str, str]]:
-        """Parse section lines into editable section outline blocks."""
+        """Parse chapter lines into editable outline blocks."""
         sections: List[Dict[str, str]] = []
         current: Optional[Dict[str, str]] = None
         for line in lines:
             lower = line.lower()
-            if lower.startswith("- beat"):
+            if lower.startswith("- chapter"):
                 if current:
                     sections.append(current)
                 current = {"label": line.lstrip("- ").strip(), "text": line.lstrip("- ").strip()}
@@ -726,37 +882,7 @@ Write only the prose for this section. Requirements:
         if current:
             sections.append(current)
         return sections
-    
-    def generate_story_stream(
-        self,
-        model: str,
-        title: str,
-        num_days: int,
-        jedi_details: Dict[str, str],
-        setting: str,
-        tone_focus: List[str],
-        additional_instructions: str,
-        temperature: float = 0.8,
-        system_prompt: Optional[str] = None
-    ):
-        """Generate story with streaming."""
-        prompt = self.build_prompt(
-            title, num_days, jedi_details, setting, tone_focus, additional_instructions
-        )
-        system = system_prompt or STORY_GENERATION_SYSTEM_PROMPT
-        
-        # Sized for a much longer per-day target (~7,500 words/day).
-        max_tokens = max(12000, num_days * 11000)
-        
-        LOGGER.info("story stream title=%s days=%s model=%s max_tokens=%s", title, num_days, model, max_tokens)
-        yield from self.mlx.generate_stream(
-            model=model,
-            prompt=prompt,
-            system=system,
-            temperature=temperature,
-            max_tokens=max_tokens
-        )
-    
+
     def regenerate_day(
         self,
         model: str,
@@ -817,19 +943,20 @@ Write only the prose for this section. Requirements:
         return new_story
     
     def parse_days(self, story: str) -> List[Dict[str, str]]:
-        """Parse story into day sections."""
+        """Parse story into day sections. Each day includes `word_count`."""
         days = []
-        pattern = r"## DAY (\d+):\s*(.*?)(?=## DAY \d+:|$)"
-        matches = re.findall(pattern, story, re.DOTALL | re.IGNORECASE)
+        pattern = r"^## DAY (\d+):\s*(.*?)(?=^## DAY \d+:|\Z)"
+        matches = re.findall(pattern, story, re.DOTALL | re.IGNORECASE | re.MULTILINE)
         
         for day_num, content in matches:
-            # Extract title from first line
-            lines = content.strip().split("\n")
+            text = content.strip()
+            lines = text.split("\n")
             title = lines[0].strip() if lines else f"Day {day_num}"
             days.append({
                 "number": int(day_num),
                 "title": title,
-                "content": content.strip()
+                "content": text,
+                "word_count": len(text.split()),
             })
         
         return days
@@ -975,7 +1102,7 @@ Score: NN/100
         tone_focus: List[str],
         temperature: float = 0.3,
         system_prompt: Optional[str] = None,
-        progress_callback: Optional[Any] = None,
+        progress_callback: ProgressCallback | None = None,
     ) -> Dict[str, Any]:
         """Run a critique pass on the completed story and return structured feedback."""
         prompt = self.build_critique_prompt(

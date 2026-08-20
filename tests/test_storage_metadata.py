@@ -9,6 +9,80 @@ from src.utils.storage import EpisodeStorage
 
 
 class TestEpisodeStorageMetadata(unittest.TestCase):
+    def test_checkpoint_is_atomic_and_separate_from_episode_library(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            storage = EpisodeStorage(tmpdir)
+            checkpoint = storage.save_checkpoint(
+                "Checkpoint Title",
+                {"num_days": 2, "jedi_name": "Jedi"},
+                {1: "## DAY 1: Ashfall\n\nDraft"},
+                outline="## DAY 1: Ashfall",
+            )
+
+            self.assertTrue(checkpoint.exists())
+            payload = json.loads(checkpoint.read_text(encoding="utf-8"))
+            self.assertEqual(payload["title"], "Checkpoint Title")
+            self.assertEqual(payload["day_drafts"]["1"], "## DAY 1: Ashfall\n\nDraft")
+            self.assertEqual(storage.list_episodes(), [])
+
+            checkpoints = storage.list_checkpoints()
+            self.assertEqual(len(checkpoints), 1)
+            loaded = storage.load_checkpoint(checkpoints[0]["path"])
+            self.assertEqual(loaded["title"], "Checkpoint Title")
+            self.assertIsNone(storage.load_checkpoint(str(Path(tmpdir) / "outside.json")))
+            self.assertTrue(storage.delete_checkpoint("Checkpoint Title"))
+            self.assertEqual(storage.list_checkpoints(), [])
+            self.assertFalse(storage.delete_checkpoint("Checkpoint Title"))
+
+    def test_same_title_saves_distinct_episode_ids(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            storage = EpisodeStorage(tmpdir)
+            metadata = {"num_days": 1, "jedi_name": "Jedi", "setting": "Kalee"}
+
+            first = storage.save_episode("Same Title", "first", metadata)
+            second = storage.save_episode("Same Title", "second", metadata)
+
+            self.assertNotEqual(first, second)
+            self.assertEqual(storage.load_episode(first)["story"].split("---\n\n", 1)[1], "first")
+            self.assertEqual(storage.load_episode(second)["story"].split("---\n\n", 1)[1], "second")
+
+    def test_update_episode_can_save_empty_story(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            storage = EpisodeStorage(tmpdir)
+            episode_id = storage.save_episode(
+                "Editable", "original", {"num_days": 1, "jedi_name": "Jedi", "setting": "Kalee"}
+            )
+
+            self.assertTrue(storage.update_episode(episode_id, story=""))
+            loaded = storage.load_episode(episode_id)
+            self.assertEqual(loaded["story"].split("---\n\n", 1)[1], "")
+
+    def test_invalid_ids_and_filenames_cannot_escape_storage_root(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            storage = EpisodeStorage(tmpdir)
+            episode_id = storage.save_episode(
+                "Safe", "story", {"num_days": 1, "jedi_name": "Jedi", "setting": "Kalee"}
+            )
+
+            self.assertIsNone(storage.load_episode("../outside"))
+            self.assertFalse(storage.delete_episode("../outside"))
+            with self.assertRaises(ValueError):
+                storage.write_episode_bundle(episode_id, "../outside.json")
+
+            rel = storage.save_image(episode_id, 1, "../../outside/frame", b"png")
+            self.assertTrue(rel.startswith(f"{episode_id}/images/"))
+            self.assertFalse((Path(tmpdir).parent / "outside").exists())
+
+    def test_malformed_metadata_does_not_break_library_listing(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            storage = EpisodeStorage(tmpdir)
+            broken = Path(tmpdir) / "episode-broken"
+            broken.mkdir()
+            (broken / "metadata.json").write_text("{not json", encoding="utf-8")
+
+            self.assertEqual(storage.list_episodes(), [])
+            self.assertIsNone(storage.load_episode("episode-broken"))
+
     def test_target_jedi_name_fallback_and_header(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             storage = EpisodeStorage(tmpdir)
@@ -392,6 +466,22 @@ class TestEpisodeStorageMetadata(unittest.TestCase):
             self.assertEqual(bytes_manifest, file_manifest)
             self.assertEqual(bytes_manifest["files"]["story_md"]["sha256"], file_manifest["files"]["story_md"]["sha256"])
 
+    def test_write_episode_archive_includes_saved_media(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            storage = EpisodeStorage(tmpdir)
+            episode_id = storage.save_episode(
+                "Archive Media",
+                "## DAY 1: Dawn\n\nThe hunt begins.",
+                {"num_days": 1, "jedi_name": "Archive Jedi", "setting": "Kalee"},
+            )
+            storage.save_image(episode_id, day=1, shot="keyframe", image_bytes=b"png")
+
+            archive_bytes = storage.build_episode_archive_bytes(episode_id)
+
+            with zipfile.ZipFile(io.BytesIO(archive_bytes), "r") as zf:
+                self.assertIn("images/day-01-keyframe.png", zf.namelist())
+                self.assertEqual(zf.read("images/day-01-keyframe.png"), b"png")
+
     def test_write_episode_archive_omits_prompts_when_missing(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             storage = EpisodeStorage(tmpdir)
@@ -418,4 +508,3 @@ class TestEpisodeStorageMetadata(unittest.TestCase):
                 self.assertNotIn("prompts.json", names)
                 manifest = json.loads(zf.read("manifest.json").decode("utf-8"))
                 self.assertFalse(manifest["files"]["prompts_json"]["exists"])
-

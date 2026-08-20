@@ -6,6 +6,23 @@ from src.utils.drawthings_client import DrawThingsClient
 
 
 class TestDrawThingsClient(unittest.TestCase):
+    @patch("src.utils.drawthings_client.time.sleep")
+    @patch("src.utils.drawthings_client._requests")
+    def test_request_reuses_timeout_across_retries(self, requests_factory, sleep):
+        requests = Mock()
+        requests.exceptions.ConnectionError = ConnectionError
+        requests.exceptions.Timeout = TimeoutError
+        response = Mock()
+        requests.request.side_effect = [ConnectionError("offline"), response]
+        requests_factory.return_value = requests
+
+        client = DrawThingsClient()
+        self.assertIs(client._request("GET", client.options, timeout=7), response)
+
+        self.assertEqual(requests.request.call_args_list[0].kwargs["timeout"], 7)
+        self.assertEqual(requests.request.call_args_list[1].kwargs["timeout"], 7)
+        sleep.assert_called_once()
+
     def test_generate_image_decodes_base64_image(self):
         png_bytes = b"\x89PNG\r\n\x1a\nfakepng"
         encoded = base64.b64encode(png_bytes).decode("ascii")
@@ -53,4 +70,3 @@ class TestDrawThingsClient(unittest.TestCase):
 
         self.assertTrue(out["fallback"])
         self.assertIn("No video bytes", out["info"])
-

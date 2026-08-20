@@ -1,10 +1,4 @@
-[theme]
-base = "light"
-primaryColor = "#6b6e3c"
-backgroundColor = "#d8dcd0"
-secondaryBackgroundColor = "#e6e4d5"
-textColor = "#2d2d27"
-font = "sans serif"
-
 [server]
-maxUploadSize = 50
+# Avoid importing optional Transformers vision modules while watching source
+# files. Restart Streamlit after code changes during local development.
+fileWatcherType = "none"

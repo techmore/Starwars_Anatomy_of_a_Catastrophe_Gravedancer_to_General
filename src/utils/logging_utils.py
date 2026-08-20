@@ -8,10 +8,12 @@ from pathlib import Path
 from threading import RLock
 from uuid import uuid4
 
+from src.utils.settings import PROJECT_ROOT, SETTINGS
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
-LOG_DIR = REPO_ROOT / "log"
-LOG_PATH = REPO_ROOT / "log.txt"
+
+REPO_ROOT = PROJECT_ROOT
+LOG_DIR = SETTINGS.log_path
+LOG_PATH = LOG_DIR.parent / "log.txt"
 _RUN_LOCK = RLock()
 _CURRENT_RUN_LOG_PATH: Path | None = None
 
@@ -89,7 +91,7 @@ def get_logger(name: str) -> logging.Logger:
 
     logger.setLevel(logging.INFO)
     formatter = logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
-    current_handler = logging.FileHandler(LOG_PATH)
+    current_handler = logging.FileHandler(LOG_PATH, encoding="utf-8")
     current_handler.setFormatter(formatter)
     run_handler = _DynamicRunFileHandler()
     run_handler.setFormatter(formatter)
@@ -124,7 +126,7 @@ def read_log_tail(max_lines: int = 120) -> str:
     if not LOG_PATH.exists():
         return ""
     try:
-        lines = LOG_PATH.read_text().splitlines()
+        lines = LOG_PATH.read_text(encoding="utf-8").splitlines()
     except Exception:
         return ""
     if max_lines <= 0:
@@ -135,7 +137,7 @@ def read_log_tail(max_lines: int = 120) -> str:
 def write_debug_artifact(filename: str, content: str) -> Path:
     """Write a repo-local debug artifact next to log.txt and return its path."""
     path = get_run_log_path().parent / filename
-    path.write_text(content)
+    path.write_text(content, encoding="utf-8")
     return path
 
 

@@ -1,7 +1,6 @@
 """Story tab: episode concept → story generation → day-by-day view.
 
 Ports the working render_story_stage() logic from app.py and adds:
-  - story quality validation warnings (Phase 4)
   - per-day regeneration via StoryGenerator.regenerate_day() (Phase 4)
   - edit mode toggle for the full story text (Phase 4)
 """
@@ -18,15 +17,18 @@ from src.utils.concepts import (
 )
 from src.utils.logging_utils import get_logger, start_new_run_log, write_debug_artifact
 from src.components.pipeline_timeline import render_pipeline_timeline, PipelineTracker, _fmt_duration as _fmt_total
+from src.components.ui import preformatted_html
 from src.utils.streaming_ui import build_stream_runtime, finalize_stream_state, render_cached_outline_banner, render_stream_update, reset_stream_panels
 from src.utils.session_state import (
     build_episode_payload, build_jedi_details,
     hydrate_story_inputs,
     reset_story_flow,
     render_episode_prompt_archive_summary,
+    GENERATION_PROFILES,
 )
-from src.utils.story_validator import validate_story, render_warnings
-from src.utils.prompt_schema import validate_concept_dict, validate_outline_structure
+from src.utils.prompt_schema import DAILY_TARGET_TOKENS, validate_concept_dict, validate_outline_structure
+from src.utils.story_validator import validate_story
+from src.components.story_warnings import render_warnings
 
 
 LOGGER = get_logger(__name__)
@@ -55,8 +57,63 @@ def render_story_stage(context):
     storage = context.storage
     story_gen = context.story_gen
 
-    st.markdown("## 📖 Story")
-    st.markdown("Generate the episode narrative first. Art and video come after.")
+    st.markdown("## Story workspace")
+    st.markdown("Generate the narrative first. Art and video come after.")
+    profile = GENERATION_PROFILES.get(
+        st.session_state.get("generation_profile", "standard"),
+        GENERATION_PROFILES["standard"],
+    )
+    st.markdown(
+        f"""
+        <div class="sw-run-summary">
+          <div><span class="sw-eyebrow">ACTIVE RUN PROFILE</span><strong>{profile['label']}</strong></div>
+          <div class="sw-run-copy">{profile['description']} <span>{profile['estimate']}.</span></div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    _render_workflow_stepper()
+    st.markdown("---")
+
+    checkpoints = storage.list_checkpoints()
+    if checkpoints and not st.session_state.get("current_episode_id"):
+        latest = checkpoints[0]
+        drafts = latest.get("day_drafts", {})
+        checkpoint_model = latest.get("metadata", {}).get("model", "")
+        active_model = st.session_state.get("mlx_model", "")
+        st.warning(
+            f"A recoverable draft is available: **{latest.get('title', 'Untitled')}** "
+            f"({len(drafts)} completed day(s))."
+        )
+        if checkpoint_model and active_model and checkpoint_model != active_model:
+            st.caption(
+                f"Checkpoint model: `{checkpoint_model}` · Current model: `{active_model}`. "
+                "Resume will continue with the current model."
+            )
+        if st.button("▶ Load recoverable draft", key="load_story_checkpoint"):
+            loaded = storage.load_checkpoint(latest.get("path", ""))
+            if loaded:
+                st.session_state["story_title"] = loaded.get("title", "")
+                metadata = loaded.get("metadata", {})
+                st.session_state["story_days"] = metadata.get("num_days", len(loaded.get("day_drafts", {})) or 1)
+                st.session_state["story_setting"] = metadata.get("setting", "")
+                st.session_state["jedi_name"] = metadata.get("target_jedi_name") or metadata.get("jedi_name", "")
+                st.session_state["jedi_species"] = metadata.get("jedi_species", "")
+                st.session_state["jedi_rank"] = metadata.get("jedi_rank", "")
+                st.session_state["jedi_saber"] = metadata.get("jedi_lightsaber_color", "")
+                st.session_state["jedi_personality"] = metadata.get("jedi_personality", "")
+                st.session_state["jedi_target"] = metadata.get("jedi_why_targeted", "")
+                st.session_state["story_tone"] = list(metadata.get("tone_focus", []) or [])
+                st.session_state["story_additional"] = metadata.get("additional_instructions", "")
+                st.session_state["story_outline"] = loaded.get("outline", "")
+                st.session_state["story_day_drafts"] = {
+                    int(day): text for day, text in loaded.get("day_drafts", {}).items()
+                }
+                st.session_state["story_draft_only_mode"] = True
+                st.session_state["show_manual_form_state"] = True
+                st.success("Checkpoint loaded. Review the inputs, then resume generation.")
+                st.rerun()
+
     st.markdown("---")
 
     # Current episode banner
@@ -144,6 +201,7 @@ def _run_concept_then_generate(mlx, model, storage):
             render_pipeline_timeline("concept", tracker=tracker, widget=timeline_widget)
             progress.info("Writing the episode context...")
             context_prompt = build_concept_context_prompt(used_names)
+            context_chunks = []
             context_response = ""
             for chunk in mlx.generate_stream(
                 model=model,
@@ -152,10 +210,11 @@ def _run_concept_then_generate(mlx, model, storage):
                 temperature=0.7,
                 max_tokens=2048,
             ):
-                context_response += chunk
+                context_chunks.append(chunk)
+                context_response = "".join(context_chunks)
                 progress.info(f"Concept context... {len(context_response):,} chars")
-                context_preview.markdown(f"<pre class='pre-wrap'>{context_response}</pre>", unsafe_allow_html=True)
-            context_preview.markdown(f"<pre class='pre-wrap'>{context_response}</pre>", unsafe_allow_html=True)
+                context_preview.markdown(preformatted_html(context_response), unsafe_allow_html=True)
+            context_preview.markdown(preformatted_html(context_response), unsafe_allow_html=True)
             tracker.complete("concept")
             LOGGER.info("Concept context completed model=%s chars=%d elapsed=%s", model, len(context_response), tracker.format_duration("concept"))
 
@@ -170,6 +229,7 @@ def _run_concept_then_generate(mlx, model, storage):
             )
 
             extraction_prompt = build_concept_extraction_prompt(clean_context)
+            extraction_chunks = []
             extraction_response = ""
             for chunk in mlx.generate_stream(
                 model=model,
@@ -178,10 +238,11 @@ def _run_concept_then_generate(mlx, model, storage):
                 temperature=0.2,
                 max_tokens=2048,
             ):
-                extraction_response += chunk
+                extraction_chunks.append(chunk)
+                extraction_response = "".join(extraction_chunks)
                 progress.info(f"Extracting fields... {len(extraction_response):,} chars")
-                extraction_preview.markdown(f"<pre class='pre-wrap'>{extraction_response}</pre>", unsafe_allow_html=True)
-            extraction_preview.markdown(f"<pre class='pre-wrap'>{extraction_response}</pre>", unsafe_allow_html=True)
+                extraction_preview.markdown(preformatted_html(extraction_response), unsafe_allow_html=True)
+            extraction_preview.markdown(preformatted_html(extraction_response), unsafe_allow_html=True)
             tracker.complete("extraction")
             LOGGER.info("Concept extraction completed model=%s chars=%d elapsed=%s", model, len(extraction_response), tracker.format_duration("extraction"))
 
@@ -215,6 +276,7 @@ def _run_concept_then_generate(mlx, model, storage):
                 repair_prompt = build_missing_fields_repair_prompt(
                     clean_context, concept, missing, used_names=used_names,
                 )
+                repair_chunks = []
                 repair_response = ""
                 for chunk in mlx.generate_stream(
                     model=model,
@@ -223,7 +285,8 @@ def _run_concept_then_generate(mlx, model, storage):
                     temperature=0.2,
                     max_tokens=1024,
                 ):
-                    repair_response += chunk
+                    repair_chunks.append(chunk)
+                    repair_response = "".join(repair_chunks)
                     progress.info(f"Repairing... {len(repair_response):,} chars")
                 LOGGER.info(
                     "Repair response model=%s chars=%d attempt=%s",
@@ -266,9 +329,9 @@ def _run_concept_then_generate(mlx, model, storage):
                 )
                 status_box.update(label="❌ Failed to parse concept", state="error")
                 with st.expander("Context response", expanded=False):
-                    st.markdown(f"<pre class='pre-wrap'>{context_response}</pre>", unsafe_allow_html=True)
+                    st.markdown(preformatted_html(context_response), unsafe_allow_html=True)
                 with st.expander("Extraction response", expanded=False):
-                    st.markdown(f"<pre class='pre-wrap'>{extraction_response}</pre>", unsafe_allow_html=True)
+                    st.markdown(preformatted_html(extraction_response), unsafe_allow_html=True)
                 st.stop()
 
             if repair_started:
@@ -299,6 +362,27 @@ def _run_concept_then_generate(mlx, model, storage):
 
 def _render_manual_form():
     st.markdown("### Manual Episode Builder")
+    profile_keys = list(GENERATION_PROFILES)
+    current_profile = st.session_state.get("generation_profile", "standard")
+    profile_index = profile_keys.index(current_profile) if current_profile in profile_keys else 1
+    selected_profile = st.selectbox(
+        "Generation profile",
+        options=profile_keys,
+        index=profile_index,
+        format_func=lambda key: GENERATION_PROFILES[key]["label"],
+        key="generation_profile_selector",
+        help="Choose Smoke test before a long-form run to verify the model and save path.",
+    )
+    st.session_state["generation_profile"] = selected_profile
+    selected_config = GENERATION_PROFILES[selected_profile]
+    previous_profile = st.session_state.get("_generation_profile_rendered")
+    if previous_profile != selected_profile:
+        st.session_state["story_days"] = selected_config["days"]
+        st.session_state["_generation_profile_rendered"] = selected_profile
+    st.caption(
+        f"{selected_config['description']} Expected runtime: {selected_config['estimate']}. "
+        "Completed stages are retained in the current session."
+    )
     col1, col2 = st.columns([2, 1])
     with col1:
         st.text_input(
@@ -307,7 +391,15 @@ def _render_manual_form():
             key="story_title",
         )
     with col2:
-        st.slider("Days (5 recommended for ~7,500 words per day)", min_value=3, max_value=8, value=5, key="story_days")
+        default_days = selected_config["days"]
+        min_days = 1 if selected_profile == "smoke" else 3
+        st.slider(
+            "Days (long-form targets ~45,000 output tokens per day)",
+            min_value=min_days,
+            max_value=8,
+            value=max(min_days, min(default_days, 8)),
+            key="story_days",
+        )
 
     with st.expander("🎯 Jedi Target", expanded=True):
         jc1, jc2 = st.columns(2)
@@ -333,6 +425,28 @@ def _render_manual_form():
         st.rerun()
 
 
+def _render_workflow_stepper() -> None:
+    """Orient users in the production pipeline without changing tab behavior."""
+    has_story = bool(st.session_state.get("current_story", "").strip())
+    has_outline = bool(st.session_state.get("story_outline", "").strip())
+    has_episode = bool(st.session_state.get("current_episode_id"))
+    steps = [
+        ("01", "Concept", not has_outline and not has_story),
+        ("02", "Outline", has_outline and not has_story),
+        ("03", "Draft", has_story and not has_episode),
+        ("04", "Review", has_episode),
+        ("05", "Visuals", False),
+    ]
+    active_seen = False
+    items = []
+    for number, label, active in steps:
+        cls = "active" if active and not active_seen else "done" if active_seen else "pending"
+        if active:
+            active_seen = True
+        items.append(f'<div class="sw-step {cls}"><span>{number}</span><b>{label}</b></div>')
+    st.markdown(f'<nav class="sw-stepper" aria-label="Episode production stages">{"".join(items)}</nav>', unsafe_allow_html=True)
+
+
 def _run_generation(mlx, model, temperature, storage, story_gen):
     if not st.session_state.get("log_run_path"):
         st.session_state["log_run_path"] = str(start_new_run_log("story-generate"))
@@ -350,7 +464,8 @@ def _run_generation(mlx, model, temperature, storage, story_gen):
         return
 
     LOGGER.info(
-        "Starting story generation title=%s days=%s setting=%s temp=%.2f",
+        "Starting story generation model=%s title=%s days=%s setting=%s temp=%.2f",
+        model,
         title,
         num_days,
         setting,
@@ -364,6 +479,7 @@ def _run_generation(mlx, model, temperature, storage, story_gen):
             runtime = build_stream_runtime()
             widgets = runtime["widgets"]
             progress_state = runtime["progress_state"]
+            progress_state["target_tokens"] = DAILY_TARGET_TOKENS * max(1, num_days)
             reset_stream_panels(widgets, progress_state)
             tracker = PipelineTracker()
 
@@ -373,7 +489,29 @@ def _run_generation(mlx, model, temperature, storage, story_gen):
             def _push_progress(stage: str, message: str, text: str = "") -> None:
                 render_stream_update(stage, message, text, widgets, progress_state)
 
+            def _checkpoint_day(day_number: int, day_text: str) -> None:
+                """Retain completed days so a failed run can be resumed in-session."""
+                drafts = dict(st.session_state.get("story_day_drafts", {}))
+                drafts[day_number] = day_text
+                st.session_state["story_day_drafts"] = drafts
+                checkpoint_path = storage.save_checkpoint(
+                    title=title,
+                    metadata=payload["metadata"],
+                    day_drafts=drafts,
+                    outline=st.session_state.get("story_outline", ""),
+                )
+                _push_progress("checkpoint", f"Checkpoint saved after Day {day_number}.")
+                LOGGER.info("Story checkpoint saved path=%s day=%s", checkpoint_path, day_number)
+
             outline = st.session_state.get("story_outline", "").strip()
+            if outline:
+                cached_errors = validate_outline_structure(outline, expected_days=num_days)
+                if cached_errors:
+                    LOGGER.warning("Discarding invalid cached outline errors=%s", cached_errors)
+                    outline = ""
+                    st.session_state["story_outline"] = ""
+                    st.session_state["story_outline_days"] = []
+                    st.session_state["story_outline_approved"] = False
             if outline:
                 render_cached_outline_banner(widgets, outline)
                 _completed.append("outline")
@@ -400,23 +538,6 @@ def _run_generation(mlx, model, temperature, storage, story_gen):
                 outline_errors = validate_outline_structure(outline, expected_days=num_days)
                 if outline_errors:
                     LOGGER.warning("Outline validation issues: %s", outline_errors)
-                    # Try one retry with a lower temperature.
-                    outline = story_gen.generate_episode_outline(
-                        model=model,
-                        title=title,
-                        num_days=num_days,
-                        jedi_details=jedi_details,
-                        setting=setting,
-                        tone_focus=tone_focus,
-                        additional_instructions=additional,
-                        temperature=max(0.1, temperature - 0.4),
-                        system_prompt=st.session_state["story_sys_prompt"],
-                        progress_callback=_push_progress,
-                    )
-                    write_debug_artifact("outline-retry-response.txt", outline)
-                    outline_errors = validate_outline_structure(outline, expected_days=num_days)
-                    if outline_errors:
-                        LOGGER.error("Outline retry still invalid: %s", outline_errors)
                 st.session_state["story_outline"] = outline
                 st.session_state["story_outline_days"] = []
                 st.session_state["story_outline_approved"] = True
@@ -425,6 +546,7 @@ def _run_generation(mlx, model, temperature, storage, story_gen):
                 LOGGER.info("Outline completed elapsed=%s chars=%d", tracker.format_duration("outline"), len(outline))
             outline_days = story_gen.parse_outline_days(outline)
             st.session_state["story_outline_days"] = outline_days
+            LOGGER.info("Outline parsed days=%d expected_days=%d", len(outline_days), num_days)
             _completed.append("outline")
             tracker.start("story")
             render_pipeline_timeline("story", completed_stages=_completed, tracker=tracker, widget=timeline_widget)
@@ -450,34 +572,20 @@ def _run_generation(mlx, model, temperature, storage, story_gen):
                 ),
                 draft_only=st.session_state.get("story_draft_only_mode", False),
                 progress_callback=_push_progress,
+                checkpoint_callback=_checkpoint_day,
             )
             finalize_stream_state(widgets, progress_state, character_count=len(full_response))
             story_container.markdown(full_response)
+            quality_report = validate_story(full_response, expected_days=num_days)
+            if quality_report["warnings"]:
+                LOGGER.warning("Story quality warnings title=%s warnings=%s", title, quality_report["warnings"])
+                render_warnings(quality_report)
             gen_status.update(label=f"✅ Generated {len(full_response):,} characters", state="complete")
 
             tracker.complete("story")
             _completed.append("story")
 
             # --- Critique pass ---
-            tracker.start("critique")
-            render_pipeline_timeline("critique", completed_stages=_completed, tracker=tracker, widget=timeline_widget)
-            critique_report = story_gen.critique_story(
-                model=model,
-                full_story=full_response,
-                outline=st.session_state.get("story_outline", ""),
-                title=title,
-                num_days=num_days,
-                jedi_details=jedi_details,
-                setting=setting,
-                tone_focus=tone_focus,
-                temperature=0.3,
-                progress_callback=_push_progress,
-            )
-            st.session_state["current_critique_report"] = critique_report
-            tracker.complete("critique")
-            _completed.append("critique")
-            # ---------------------
-
             tracker.start("save")
             render_pipeline_timeline("save", completed_stages=_completed, tracker=tracker, widget=timeline_widget)
 
@@ -492,22 +600,19 @@ def _run_generation(mlx, model, temperature, storage, story_gen):
             LOGGER.info("Saving episode title=%s chars=%d", title, len(full_response))
             episode_id = storage.save_episode(title=title, story=full_response, metadata=metadata)
             st.session_state["current_episode_id"] = episode_id
+            storage.delete_checkpoint(title)
 
             tracker.complete("save")
             _completed.append("save")
             render_pipeline_timeline("", completed_stages=_completed, tracker=tracker, widget=timeline_widget)
 
             total_time = sum(t for t in tracker.timings.values())
-            critique_report = st.session_state.get("current_critique_report", {})
-            overall_score = critique_report.get("overall", {}).get("score", "N/A") if critique_report else "N/A"
             LOGGER.info(
-                "Saved episode id=%s title=%s total_elapsed=%s outline=%s story=%s critique=%s save=%s critique_score=%s",
-                episode_id, title, _fmt_total(total_time),
+                "Saved episode id=%s title=%s model=%s total_elapsed=%s outline=%s story=%s save=%s",
+                episode_id, title, model, _fmt_total(total_time),
                 tracker.format_duration("outline") or "skipped",
                 tracker.format_duration("story"),
-                tracker.format_duration("critique"),
                 tracker.format_duration("save"),
-                overall_score,
             )
             st.success(f"✅ Episode saved: **{title}**")
             st.markdown("### Next steps")
@@ -527,6 +632,25 @@ def _run_generation(mlx, model, temperature, storage, story_gen):
             LOGGER.exception("Story generation failed for title=%s days=%s", title, num_days)
             render_pipeline_timeline("", completed_stages=_completed, error_stage="story", tracker=tracker, widget=timeline_widget)
             st.error(f"❌ Generation failed: {e}")
+            completed_days = len(st.session_state.get("story_day_drafts", {}))
+            if completed_days:
+                st.info(
+                    f"A checkpoint is available for {completed_days} completed day(s). "
+                    "Resume will reuse those drafts as continuity context."
+                )
+                if st.button("▶ Resume from checkpoint", type="primary", key="resume_story_checkpoint"):
+                    st.session_state["story_draft_only_mode"] = True
+                    st.session_state["auto_generate"] = True
+                    st.rerun()
+            else:
+                st.info("No completed-day checkpoint is available. Retry will rebuild the outline from the current inputs.")
+                if st.button("↻ Retry generation", type="primary", key="retry_story_generation"):
+                    st.session_state["story_outline"] = ""
+                    st.session_state["story_outline_days"] = []
+                    st.session_state["story_outline_approved"] = False
+                    st.session_state["story_draft_only_mode"] = False
+                    st.session_state["auto_generate"] = True
+                    st.rerun()
             with st.expander("Technical details", expanded=False):
                 st.code(str(e), language="text")
         finally:
@@ -562,7 +686,7 @@ def _build_day_outline(day_num, title, purpose, sections, ending_hook):
     for idx, section in enumerate(sections, start=1):
         section_text = (section or "").strip()
         if section_text:
-            lines.append(f"- Beat {idx}: {section_text}")
+            lines.append(f"- Chapter {idx}: {section_text}")
     if ending_hook:
         lines.append(f"- Ending hook: {ending_hook}")
     return "\n".join(lines)
@@ -680,11 +804,6 @@ def _render_current_story(story, storage, story_gen, model, temperature):
     st.markdown("---")
     st.markdown(f"## 📖 {st.session_state.get('story_title', 'Episode')}")
 
-    # Quality validation (Phase 4) — informs but doesn't block.
-    expected_days = st.session_state.get("current_metadata", {}).get("num_days")
-    report = validate_story(story, expected_days=expected_days)
-    render_warnings(report)
-
     # Stats row
     stats = story_gen.get_stats(story)
     m1, m2, m3, m4 = st.columns(4)
@@ -699,12 +818,6 @@ def _render_current_story(story, storage, story_gen, model, temperature):
 
     st.markdown("---")
 
-    # Critique report
-    critique = st.session_state.get("current_critique_report")
-    if critique and critique.get("days"):
-        _render_critique_report(critique)
-
-    st.markdown("---")
     edit_mode = st.toggle("✏️ Edit mode", value=False, key="story_edit_mode")
     ep_id = st.session_state.get("current_episode_id")
 
@@ -715,7 +828,8 @@ def _render_current_story(story, storage, story_gen, model, temperature):
     # Day-by-day view with per-day regeneration (Phase 4).
     days = story_gen.parse_days(story)
     for day in days:
-        with st.expander(f"Day {day['number']}: {day['title']}", expanded=False):
+        dwc = f"({day['word_count']:,}) " if day.get('word_count') else ""
+        with st.expander(f"{dwc}Day {day['number']}: {day['title']}", expanded=False):
             st.markdown(day["content"])
             # Regenerate just this day using the existing (previously dead) method.
             if ep_id:
@@ -750,14 +864,11 @@ def _render_current_story(story, storage, story_gen, model, temperature):
                             st.error(f"Failed to regenerate day: {e}")
 
     st.markdown("---")
-    a1, a2, a3 = st.columns(3)
+    a1, a2 = st.columns(2)
     with a1:
-        if st.button("🎨 Generate Art", use_container_width=True, key="story_to_art"):
-            st.info("Switch to the **Art** tab to generate image prompts.")
-    with a2:
         if st.button("📚 Library", use_container_width=True, key="story_to_lib"):
-            st.info("Switch to the **Library** tab to export.")
-    with a3:
+            st.info("Switch to the **Library** tab for review, visuals, and export.")
+    with a2:
         if st.button("🔄 New Episode", use_container_width=True, key="story_new"):
             reset_story_flow(st)
             st.rerun()

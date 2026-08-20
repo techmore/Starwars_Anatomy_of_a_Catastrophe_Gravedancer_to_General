@@ -7,10 +7,24 @@ tests, and the generation pipeline.
 from __future__ import annotations
 
 import re
+import os
 from typing import Dict, List, Any
 
+
+def _daily_target_tokens() -> int:
+    """Read the daily token budget, tolerating a malformed env override."""
+    try:
+        return int(os.environ.get("GRAVEDANCER_DAILY_TARGET_TOKENS", "45000"))
+    except (TypeError, ValueError):
+        return 45000
+
+
 # Shared constants
-TARGET_WORDS_PER_DAY = 7500
+DAILY_TARGET_TOKENS = max(8_000, _daily_target_tokens())
+TOKENS_PER_WORD_ESTIMATE = 1.3
+TARGET_WORDS_PER_DAY = round(DAILY_TARGET_TOKENS / TOKENS_PER_WORD_ESTIMATE)
+CHAPTERS_PER_DAY = 10
+MIN_CHAPTERS_PER_DAY = 5
 DEFAULT_DAY_COUNT = 5
 CONCEPT_MIN_DAYS = 3
 CONCEPT_MAX_DAYS = 8
@@ -44,8 +58,8 @@ STORY_DAY_HEADING = "## DAY {day_number}: [Descriptive Title]"
 STORY_BASE_CONSTRAINTS = [
     "Write a complete {num_days}-day novella following the series format.",
     f"Target ~{TARGET_WORDS_PER_DAY:,} words per day.",
-    "Each day should have 3-5 distinct sections or chapters.",
-    "Each section should contain 2-4 concrete micro-beats that expand into prose without rambling.",
+    "Each day should have 10 distinct chapters.",
+    "Each chapter should contain 4 concise, concrete beats.",
 ]
 
 STORY_MULTI_PASS_RULES = [
@@ -64,7 +78,7 @@ STORY_STRUCTURE_REQUIREMENTS = [
     "A thematic spine (one core theme per episode: cost of honor, seduction of power, war as ritual, what makes a monster, the last human thing)",
     "A distinct Jedi antagonist with their own philosophy and a defining moment of choice",
     "A closing image that lands like a hammer — a single image, decision, or haunting line on the final day",
-    "The Jedi target DIES on the final day unless the tone explicitly specifies 'Ongoing pursuit (no kill)' — death is the default, escape is the exception",
+    "The Jedi's fate must follow the approved concept; death, escape, or a continuing pursuit are all valid when supported by the episode arc",
 ]
 
 STORY_DEEPENING_REQUIREMENTS = [
@@ -72,8 +86,8 @@ STORY_DEEPENING_REQUIREMENTS = [
     "Character interiority: Qymaen's thoughts, doubts, memories of Ronderu lij Kummar, the whisper of his augmentations, the weight of his mask",
     "Tactical detail: how combat actually unfolds — footwork, breathing, the hiss of servos, the angle of a parry, the choice of terrain",
     "Worldbuilding texture: cultural rituals, alien flora/fauna, droid chatter, the politics of supply lines",
-    "Sub-scene structure: each day should have 3-5 distinct scenes (approach, encounter, aftermath, introspection, transition)",
-    "Nested micro-beat structure: each scene or section should contain 2-4 concrete beats with clear cause-and-effect progression",
+    "Sub-scene structure: each day should have 10 distinct chapters with room for atmosphere, tactics, reversals, and consequences",
+    "Nested beat structure: each chapter should contain 4 concise concrete beats",
     "Dialogue: sparse but earned — every line should reveal character or advance tension",
     "Cliffhangers/hooks: each day ends on a hook or revelation that pulls the reader forward",
 ]
@@ -86,19 +100,6 @@ STORY_PACING_RULES = [
 
 
 # Concept helpers
-def format_used_names(used_names: List[str]) -> str:
-    if not used_names:
-        return ""
-    return f"\nUSED_JEDI_NAMES: {', '.join(used_names)}"
-
-
-def build_concept_common_constraints(used_names: List[str]) -> str:
-    return f"""Story constraints:
-- Pre-Clone Wars.
-- Qymaen jai Sheelal hunts one original Jedi.
-- Target length: about {TARGET_WORDS_PER_DAY:,} words per day.
-- Structure: 3-8 days, usually 5.
-- Tone: Star Wars thriller / pursuit / horror / combat.{format_used_names(used_names)}"""
 
 
 def build_story_word_budget(num_days: int) -> int:
@@ -220,25 +221,67 @@ def validate_outline_structure(outline: str, expected_days: int) -> List[str]:
         if not block.strip():
             continue
 
-        # Count beats in this day
-        beat_lines = re.findall(r"^- Beat\s+\d+:", block, re.IGNORECASE | re.MULTILINE)
-        if len(beat_lines) < 3:
-            errors.append(f"DAY {day_num}: expected 3-5 beats, found {len(beat_lines)}")
-        elif len(beat_lines) > 5:
-            errors.append(f"DAY {day_num}: expected 3-5 beats, found {len(beat_lines)}")
+        chapter_lines = re.findall(r"^\s*-\s*Chapter\s+\d+:", block, re.IGNORECASE | re.MULTILINE)
+        if not MIN_CHAPTERS_PER_DAY <= len(chapter_lines) <= CHAPTERS_PER_DAY:
+            errors.append(
+                f"DAY {day_num}: expected {MIN_CHAPTERS_PER_DAY}-{CHAPTERS_PER_DAY} chapters, found {len(chapter_lines)}"
+            )
 
-        # Check each beat has content after the label
-        for beat_line in re.finditer(r"^- Beat\s+\d+:\s*(.*?)$", block, re.IGNORECASE | re.MULTILINE):
-            content = beat_line.group(1).strip()
+        for chapter_block in re.finditer(
+            r"^\s*-\s*Chapter\s+\d+:\s*(.*?)(?=^\s*-\s*Chapter\s+\d+:|^\s*-\s*Ending hook:|\Z)",
+            block,
+            re.IGNORECASE | re.MULTILINE | re.DOTALL,
+        ):
+            content = chapter_block.group(1).strip()
             if not content:
-                errors.append(f"DAY {day_num}: Beat has no content")
+                errors.append(f"DAY {day_num}: Chapter has no content")
+                continue
+            beat_count = len(re.findall(r"\bBeat\s+\d+:", content, re.IGNORECASE))
+            if not 4 <= beat_count <= 5:
+                errors.append(f"DAY {day_num}: each chapter needs 4-5 beats, found {beat_count}")
 
         # Check ending hook
-        if not re.search(r"^- Ending hook:\s*.+$", block, re.IGNORECASE | re.MULTILINE):
+        if not re.search(r"^\s*-\s*Ending hook:\s*.+$", block, re.IGNORECASE | re.MULTILINE):
             errors.append(f"DAY {day_num}: missing Ending hook")
 
         # Check purpose
-        if not re.search(r"^- Purpose:\s*.+$", block, re.IGNORECASE | re.MULTILINE):
+        if not re.search(r"^\s*-\s*Purpose:\s*.+$", block, re.IGNORECASE | re.MULTILINE):
             errors.append(f"DAY {day_num}: missing Purpose")
 
+    return errors
+
+
+def validate_outline_quality(outline: str, expected_days: int) -> List[str]:
+    """Reject structurally valid outlines that would predictably produce loops."""
+    errors: List[str] = []
+    text = str(outline or "").strip()
+    day_blocks = re.findall(
+        r"(## DAY (\d+):.*?)(?=## DAY \d+:|$)",
+        text,
+        re.DOTALL | re.IGNORECASE,
+    )
+    beats: List[str] = []
+    for block, _day_num in day_blocks[:expected_days]:
+        for match in re.finditer(r"\bBeat\s+\d+:\s*(.+)", block, re.IGNORECASE):
+            normalized = re.sub(r"[^a-z0-9]+", " ", match.group(1).lower()).strip()
+            if normalized:
+                beats.append(normalized)
+    if not beats:
+        return ["outline contains no usable beat text"]
+    duplicate_count = len(beats) - len(set(beats))
+    if duplicate_count > max(2, len(beats) // 10):
+        errors.append(
+            f"outline repeats {duplicate_count} beat(s); each chapter needs distinct actions and reversals"
+        )
+    chapter_blocks = re.findall(
+        r"^\s*-\s*Chapter\s+\d+:\s*(.*?)(?=^\s*-\s*Chapter\s+\d+:|^\s*-\s*Ending hook:|\Z)",
+        text,
+        re.IGNORECASE | re.MULTILINE | re.DOTALL,
+    )
+    signatures = []
+    for chapter in chapter_blocks:
+        words = re.findall(r"[a-z0-9]+", chapter.lower())
+        signatures.append(" ".join(words[:18]))
+    if signatures and len(set(signatures)) < max(3, len(signatures) // 2):
+        errors.append("outline chapter openings are too similar to support distinct scenes")
     return errors
