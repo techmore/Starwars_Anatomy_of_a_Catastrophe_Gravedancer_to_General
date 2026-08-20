@@ -78,6 +78,33 @@ def _save_tui_state(state: Dict[str, Any]) -> None:
     except Exception:
         pass
 
+
+def find_model_disk_path(model_id: str) -> Optional[Path]:
+    """Locate a locally downloaded MLX checkpoint directory for *model_id*."""
+    for root in (PROJECT_ROOT / ".models", Path.home() / ".models"):
+        candidate = root / model_id
+        if candidate.is_dir() and (candidate / "config.json").is_file():
+            return candidate
+    return None
+
+
+def server_serves(base: str, model_id: str, timeout: float = 2.0) -> bool:
+    """True when the OpenAI-compatible server at *base* lists *model_id*."""
+    try:
+        return model_id in harness_mod.list_served_models_at(base)
+    except Exception:
+        return False
+
+
+def port_of(base: str, default: int = 1234) -> int:
+    from urllib.parse import urlparse
+
+    try:
+        port = urlparse(base).port
+        return port or default
+    except ValueError:
+        return default
+
 _EPISODE_ID_RE = re.compile(r"Episode saved:\s*(\S+)")
 
 _ANSI_RE = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]|\x1b\][^\x07]*\x07|\x1b\][^\x07]*\x1b\\")
@@ -1229,28 +1256,109 @@ class GravedancerTUI(App):
             "--model",
             ref,
         ]
-        proc = subprocess.Popen(
-            command,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            bufsize=1,
-            env=env,
-            cwd=str(PROJECT_ROOT),
-            start_new_session=True,
-        )
         record = RunRecord(
             run_id=self._new_run_id(),
             label=f"local · {harness.name} · {model} · s{seed}",
             local=True,
             seed=seed,
             started=time.perf_counter(),
-            popen=proc,
         )
+        spec = {
+            "harness": harness,
+            "real_model": real_model,
+            "base": route_base,
+            "env": env,
+            "command": command,
+        }
         self._register_run(record)
-        self._stream_worker(record)
         self._flush_state()
         self.query_one("#log", RichLog).clear()
+        if harness.kind == "openai_http" and route_base:
+            self._launch_worker(record, spec)
+        else:
+            self._spawn_pipeline(record, spec)
+
+    def _spawn_pipeline(self, record: RunRecord, spec: Dict[str, Any]) -> None:
+        proc = subprocess.Popen(
+            spec["command"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+            env=spec["env"],
+            cwd=str(PROJECT_ROOT),
+            start_new_session=True,
+        )
+        record.popen = proc
+        record.started = time.perf_counter()
+        self._stream_worker(record)
+
+    @work(thread=True)
+    def _launch_worker(self, record: RunRecord, spec: Dict[str, Any]) -> None:
+        """Ensure the target server is up and serving the model, then launch.
+
+        Implements load-on-run for local HTTP servers: when the route's model
+        is not being served (or the server is down), spawn `rapid-mlx serve`
+        for it from the on-disk checkpoint and wait for readiness before
+        starting the pipeline. Servers stay warm afterwards for instant reuse.
+        """
+        base = spec["base"]
+        real_model = spec["real_model"]
+        harness = spec["harness"]
+
+        def log(text: str) -> None:
+            self.call_from_thread(self._log, text)
+
+        if server_serves(base, real_model):
+            log(f"[server] {harness.name} already serving {real_model} at {base}")
+            self.call_from_thread(self._spawn_pipeline, record, spec)
+            return
+
+        port = port_of(base)
+        model_path = find_model_disk_path(real_model)
+        if model_path is None:
+            record.status = "error"
+            record.ended = time.perf_counter()
+            record.error_tail = f"no local checkpoint for {real_model}"
+            log(f"[server] ✗ {record.error_tail}; start its server manually and retry.")
+            self.post_message(RunDone(record.run_id, -1))
+            return
+
+        binary = os.environ.get("GRAVEDANCER_RAPIDMLX_BIN", "rapid-mlx")
+        server_cmd = [
+            binary, "serve", str(model_path),
+            "--served-model-name", real_model,
+            "--port", str(port), "--no-mllm",
+            "--cache-memory-percent", "0.35",
+        ]
+        log(f"[server] starting {real_model} on :{port} "
+            f"(~16 GB models take 20-90s to load)…")
+        try:
+            subprocess.Popen(
+                server_cmd, cwd=str(PROJECT_ROOT),
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+        except OSError as exc:
+            record.status = "error"
+            record.ended = time.perf_counter()
+            record.error_tail = f"could not start {binary}: {exc}"
+            log(f"[server] ✗ {record.error_tail}")
+            self.post_message(RunDone(record.run_id, -1))
+            return
+
+        deadline = time.time() + 300
+        while time.time() < deadline:
+            if server_serves(base, real_model):
+                log(f"[server] ✓ {real_model} ready at {base}")
+                self.call_from_thread(self._spawn_pipeline, record, spec)
+                return
+            time.sleep(3)
+        record.status = "error"
+        record.ended = time.perf_counter()
+        record.error_tail = f"server on :{port} not ready after 300s"
+        log(f"[server] ✗ {record.error_tail} — check log/ for its output.")
+        self.post_message(RunDone(record.run_id, -1))
 
     def action_run_remote(self) -> None:
         host = self.query_one("#remote-host", Input).value.strip()
