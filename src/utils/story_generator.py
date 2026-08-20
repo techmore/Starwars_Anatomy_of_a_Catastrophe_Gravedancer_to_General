@@ -218,7 +218,7 @@ Each day must have this format:
 Rules:
 - The outline must include ALL requested days, in order, with no omissions.
 - Do not stop after Day 1 or Day 2. Continue until every day is present.
-- Each day must have exactly 10 chapters. Each chapter must have exactly 4 concise beats. Each beat should be specific enough that a later expansion pass can write prose from it without inventing new plot turns.
+- Each day must have exactly 5 chapters. Each chapter must have exactly 4 concise beats. Each beat should be specific enough that a later expansion pass can write prose from it without inventing new plot turns.
 - Make the beats explicit with "Beat 1", "Beat 2", etc. under every chapter.
 - Every day must include an ending hook, even if it is only one sentence.
 - Treat each day as a self-contained thriller chapter with its own escalation arc.

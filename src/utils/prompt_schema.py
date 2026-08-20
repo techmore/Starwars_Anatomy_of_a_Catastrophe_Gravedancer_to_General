@@ -58,7 +58,7 @@ STORY_DAY_HEADING = "## DAY {day_number}: [Descriptive Title]"
 STORY_BASE_CONSTRAINTS = [
     "Write a complete {num_days}-day novella following the series format.",
     f"Target ~{TARGET_WORDS_PER_DAY:,} words per day.",
-    "Each day should have 10 distinct chapters.",
+    "Each day should have 5 distinct chapters.",
     "Each chapter should contain 4 concise, concrete beats.",
 ]
 
@@ -86,7 +86,7 @@ STORY_DEEPENING_REQUIREMENTS = [
     "Character interiority: Qymaen's thoughts, doubts, memories of Ronderu lij Kummar, the whisper of his augmentations, the weight of his mask",
     "Tactical detail: how combat actually unfolds — footwork, breathing, the hiss of servos, the angle of a parry, the choice of terrain",
     "Worldbuilding texture: cultural rituals, alien flora/fauna, droid chatter, the politics of supply lines",
-    "Sub-scene structure: each day should have 10 distinct chapters with room for atmosphere, tactics, reversals, and consequences",
+    "Sub-scene structure: each day should have 5 distinct chapters with room for atmosphere, tactics, reversals, and consequences",
     "Nested beat structure: each chapter should contain 4 concise concrete beats",
     "Dialogue: sparse but earned — every line should reveal character or advance tension",
     "Cliffhangers/hooks: each day ends on a hook or revelation that pulls the reader forward",

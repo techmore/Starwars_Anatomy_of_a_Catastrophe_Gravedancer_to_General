@@ -142,7 +142,7 @@ HARNESSES: List[Harness] = [
         kind="opencode_cli",
         default_base=None,
         platforms=_DARWIN_LINUX,
-        note="opencode CLI · ox-alpha Free & 80+ hosted models — no local VRAM needed",
+        note="opencode CLI · ox-alpha Free & 80+ hosted models · temp/max_tokens ignored by the CLI",
     ),
     Harness(
         id="native-mlx",

@@ -19,8 +19,10 @@ Run with:  python tui.py
 
 from __future__ import annotations
 
+import json
 import os
 import platform
+import random
 import re
 import signal
 import subprocess
@@ -36,7 +38,7 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.message import Message
-from textual.screen import Screen
+from textual.screen import ModalScreen, Screen
 from textual.widgets import (
     Button,
     Footer,
@@ -51,10 +53,30 @@ from textual.widgets.option_list import Option
 
 from src.utils import harness as harness_mod
 from src.utils import remoter as remoter_mod
+from src.utils.creative_tables import generate_creative_seed
 from src.utils.remoter import RemoteTarget
 from src.utils.settings import SETTINGS
 
 PROJECT_ROOT = Path(__file__).resolve().parent
+
+STATE_PATH = Path.home() / ".gravedancer" / "tui-state.json"
+
+
+def _load_tui_state() -> Dict[str, Any]:
+    """Load persisted TUI selections (harness/model/seed/url), tolerating absence."""
+    try:
+        data = json.loads(STATE_PATH.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def _save_tui_state(state: Dict[str, Any]) -> None:
+    try:
+        STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        STATE_PATH.write_text(json.dumps(state, indent=2), encoding="utf-8")
+    except Exception:
+        pass
 
 _EPISODE_ID_RE = re.compile(r"Episode saved:\s*(\S+)")
 
@@ -82,6 +104,8 @@ class RunRecord:
     lines: List[str] = field(default_factory=list)
     episode_id: Optional[str] = None
     progress: "RunProgress" = field(default_factory=lambda: RunProgress())
+    activity: str = ""
+    error_tail: str = ""
 
 
 class RunLine(Message):
@@ -413,6 +437,49 @@ class EpisodeViewerScreen(Screen):
         self.app.pop_screen()
 
 
+class QuitConfirmScreen(ModalScreen[str]):
+    """Shown when quitting with active runs: keep them, kill them, or cancel."""
+
+    CSS = """
+    QuitConfirmScreen {
+        align: center middle;
+        background: $background 60%;
+    }
+    #quit-box {
+        width: 64;
+        height: auto;
+        padding: 1 2;
+        border: heavy $accent;
+        background: $surface;
+    }
+    #quit-title { text-style: bold; margin-bottom: 1; }
+    #quit-buttons { height: auto; margin-top: 1; }
+    #quit-buttons Button { margin-right: 1; }
+    """
+
+    def __init__(self, active_count: int) -> None:
+        super().__init__()
+        self.active_count = active_count
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="quit-box"):
+            yield Static(
+                f"[bold]{self.active_count} run(s) still active.[/]\n"
+                "Keep them running in the background, kill them, or stay.",
+                id="quit-title",
+            )
+            with Horizontal(id="quit-buttons"):
+                yield Button("Stay", id="q-stay", variant="default")
+                yield Button("Quit, keep runs", id="q-keep", variant="warning")
+                yield Button("Kill all & quit", id="q-kill", variant="error")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        choice = {"q-stay": "cancel", "q-keep": "keep", "q-kill": "kill"}.get(
+            event.button.id, "cancel"
+        )
+        self.dismiss(choice)
+
+
 class GravedancerTUI(App):
     """Drive local and remote creative pipelines from one terminal."""
 
@@ -451,6 +518,20 @@ class GravedancerTUI(App):
     #remote-box {
         margin-top: 1;
     }
+    .remote-header {
+        height: auto;
+    }
+    .remote-header Static {
+        width: auto;
+    }
+    .remote-header Button {
+        width: auto;
+        min-width: 8;
+        margin-left: 1;
+        height: 1;
+        border: none;
+        background: transparent;
+    }
     #custom-url {
         margin-top: 1;
         display: none;
@@ -483,6 +564,7 @@ class GravedancerTUI(App):
         Binding("x", "stop_run", "Stop selected"),
         Binding("v", "open_viewer", "Episodes"),
         Binding("o", "open_last_episode", "Last episode"),
+        Binding("n", "random_seed", "Random seed"),
     ]
 
     def __init__(self) -> None:
@@ -498,6 +580,8 @@ class GravedancerTUI(App):
         self._run_counter = 0
         self._last_meter: Dict[str, float] = {}
         self._stop_requested: Dict[str, bool] = {}
+        self._state = _load_tui_state()
+        self._state_dirty = False
 
     # ── UI / messages ────────────────────────────────────────────────────
 
@@ -514,13 +598,20 @@ class GravedancerTUI(App):
                 yield Static("2 · Model", classes="section")
                 yield OptionList(id="models")
                 yield Static("3 · Creative seed", classes="section")
-                yield Input(value="2", id="seed", type="integer", placeholder="Seed (1-… )")
                 yield Input(
-                    placeholder="Custom base URL, e.g. http://192.168.1.50:11434",
+                    value=str(self._state.get("seed", "2")),
+                    id="seed",
+                    type="integer",
+                    placeholder="Seed (1-… ) · N randomizes",
+                )
+                yield Input(
+                    placeholder="Base URL override (blank = harness default)",
                     id="custom-url",
                 )
-                with Vertical(id="remote-box"):
+                with Horizontal(classes="remote-header"):
                     yield Static("4 · Remote target (SSH)", classes="section")
+                    yield Button("▾ hide", id="toggle-remote", variant="default")
+                with Vertical(id="remote-box"):
                     yield Input(placeholder="Host / IP, e.g. 192.168.1.50", id="remote-host")
                     yield Input(value="~/gravedancer", id="remote-dir", placeholder="Remote project dir")
                     yield Input(placeholder="SSH user (optional / ssh config)", id="remote-user")
@@ -548,12 +639,33 @@ class GravedancerTUI(App):
         if not available:
             self._set_status("[red]No harness available on this platform[/]")
             return
-        preferred = "rapid-mlx" if self.platform_key == "darwin" else "ollama"
+        state = self._state
+        preferred = str(state.get("harness", "")).strip()
         if preferred not in {h.id for h in available}:
-            preferred = available[0].id
+            preferred = "rapid-mlx" if self.platform_key == "darwin" else "ollama"
+            if preferred not in {h.id for h in available}:
+                preferred = available[0].id
         self.query_one("#harness", Select).value = preferred
+        saved_url = str(state.get("base_url", "")).strip()
+        if saved_url:
+            self.query_one("#custom-url", Input).value = saved_url
+        # Remote section starts collapsed unless it was open (or a host is set).
+        if not (state.get("remote_open") or str(state.get("remote_host", "")).strip()):
+            self._set_remote_box_visible(False)
         self._log(f"Platform {self.platform_key} — harnesses: {', '.join(h.id for h in available)}")
         self.set_interval(1.0, self._tick_runs)
+
+    # ── persisted selections ─────────────────────────────────────────────
+
+    def _persist(self, **changes: Any) -> None:
+        """Merge selection changes into the state file (flushed each tick)."""
+        self._state.update(changes)
+        self._state_dirty = True
+
+    def _flush_state(self) -> None:
+        if self._state_dirty:
+            _save_tui_state(self._state)
+            self._state_dirty = False
 
     # ── helpers ──────────────────────────────────────────────────────────
 
@@ -564,7 +676,7 @@ class GravedancerTUI(App):
         self.query_one("#log", RichLog).write(text)
 
     def _current_base(self) -> Optional[str]:
-        if self.harness and self.harness.id == "remote-openai":
+        if self.harness and self.harness.kind == "openai_http":
             return self.query_one("#custom-url", Input).value.strip() or None
         return None
 
@@ -590,19 +702,56 @@ class GravedancerTUI(App):
     def on_select_changed(self, event: Select.Changed) -> None:
         if event.select.id == "harness":
             self.harness = harness_mod.by_id(str(event.value))
-            is_remote = self.harness.id == "remote-openai"
-            self.query_one("#custom-url", Input).display = is_remote
+            is_http = self.harness.kind == "openai_http"
+            url_input = self.query_one("#custom-url", Input)
+            url_input.display = is_http
+            default_base = self.harness.base_url()
+            url_input.placeholder = (
+                f"Base URL override (default {default_base})" if default_base
+                else "Base URL, e.g. http://192.168.1.50:11434"
+            )
             note = self.harness.note or ""
             self._set_status(f"[bold]{self.harness.name}[/] — {note}")
+            self._persist(harness=self.harness.id)
             self._load_models()
         elif event.select.id == "remote-models":
             self.selected_remote_model = str(event.value) if event.value else None
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        if event.input.id == "seed":
+            self._persist(seed=event.value)
+            try:
+                seed_value = int(event.value.strip())
+            except ValueError:
+                return
+            if seed_value < 1:
+                return
+            seed = generate_creative_seed(seed=seed_value)
+            self._set_status(
+                f"Seed [bold]{seed_value}[/] → \"[cyan]{seed['title']}[/]\" "
+                f"· {seed['num_days']} days · Jedi {seed['jedi_name']}"
+            )
+        elif event.input.id == "custom-url":
+            self._persist(base_url=event.value.strip())
+        elif event.input.id == "remote-host":
+            self._persist(remote_host=event.value.strip())
+
+    def _set_remote_box_visible(self, visible: bool) -> None:
+        self.query_one("#remote-box", Vertical).display = visible
+        button = self.query_one("#toggle-remote", Button)
+        button.label = "▾ hide" if visible else "▸ show"
+        self._persist(remote_open=visible)
+
+    def action_random_seed(self) -> None:
+        seed_value = random.randint(1, 99999)
+        self.query_one("#seed", Input).value = str(seed_value)
 
     def on_option_list_option_highlighted(self, event: OptionList.OptionHighlighted) -> None:
         if event.option_list.id == "models":
             self.selected_model = str(event.option.id)
             harness_name = self.harness.name if self.harness else "?"
             self._set_status(f"Model: [bold cyan]{self.selected_model}[/] · harness: {harness_name}")
+            self._persist(model=self.selected_model)
         elif event.option_list.id == "runs":
             self._select_run(str(event.option.id))
 
@@ -638,8 +787,15 @@ class GravedancerTUI(App):
         for label in choices:
             model_list.add_option(Option(str(label), id=str(label)))
         if choices:
-            model_list.highlighted = 0
-            self.selected_model = str(choices[0])
+            saved = str(self._state.get("model", "")).strip()
+            restore_index = 0
+            if saved:
+                for idx, label in enumerate(choices):
+                    if str(label) == saved:
+                        restore_index = idx
+                        break
+            model_list.highlighted = restore_index
+            self.selected_model = str(choices[restore_index])
         self._set_status(f"{len(choices)} model(s) on {self.harness.name if self.harness else '?'}")
 
     def action_refresh_models(self) -> None:
@@ -747,13 +903,21 @@ class GravedancerTUI(App):
 
     def _run_label(self, record: RunRecord) -> str:
         symbol = _STATUS_SYMBOLS.get(record.status, "·")
+        label = record.label
         if record.status == "running":
             dur = max(0, time.perf_counter() - record.started)
+            # Compact form: the harness prefix is implied while streaming and
+            # the freed width goes to the progress bar + stage.
+            if " · " in label:
+                parts = label.split(" · ")
+                label = " · ".join(parts[-2:])
             suffix = f"  {record.progress.label_suffix()}"
         else:
             dur = (record.ended or record.started) - record.started
             suffix = f"  [{_progress_bar(record.progress.pct)}] {record.progress.pct:.0f}%"
-        return f"{symbol} {record.label}  [{dur:6.0f}s]{suffix}"
+            if record.status == "error" and record.error_tail:
+                suffix += f" · {record.error_tail}"
+        return f"{symbol} {label}  [{dur:6.0f}s]{suffix}"
 
     def _tick_runs(self) -> None:
         runs = self.query_one("#runs", OptionList)
@@ -766,6 +930,7 @@ class GravedancerTUI(App):
             except Exception:
                 pass
         self._update_runs_header()
+        self._flush_state()
 
     def _update_runs_header(self) -> None:
         counts: Dict[str, int] = {}
@@ -798,7 +963,10 @@ class GravedancerTUI(App):
         for line in record.lines:
             log.write(line)
         if record.status == "running":
-            self._set_status(f"[bold]{record.label}[/] · {record.status} · streaming…")
+            self._set_status(
+                f"[bold]{record.label}[/] · {record.status} · streaming…"
+                + (f"\n[dim]{record.activity}[/]" if record.activity else "")
+            )
         else:
             self._set_status(
                 f"[bold]{record.label}[/] · {record.status}"
@@ -851,7 +1019,16 @@ class GravedancerTUI(App):
         elif record.status == "stopped":
             self._set_status(f"[yellow]Stopped[/] {record.label}")
         else:
-            self._set_status(f"[bold red]Failed (exit {event.code})[/] {record.label}")
+            tail = next(
+                (line.strip() for line in reversed(record.lines)
+                 if line.strip() and not _METER_RE.search(line)),
+                "",
+            )
+            record.error_tail = tail[-70:]
+            self._set_status(
+                f"[bold red]Failed (exit {event.code})[/] {record.label}"
+                + (f"\n[dim]{record.error_tail}[/]" if record.error_tail else "")
+            )
         self._update_stop_button()
         self._tick_runs()
 
@@ -903,6 +1080,7 @@ class GravedancerTUI(App):
         )
         self._register_run(record)
         self._stream_worker(record)
+        self._flush_state()
         self.query_one("#log", RichLog).clear()
 
     def action_run_remote(self) -> None:
@@ -934,6 +1112,7 @@ class GravedancerTUI(App):
         )
         self._register_run(record)
         self._stream_worker(record)
+        self._flush_state()
         self.query_one("#log", RichLog).clear()
 
     def _parse_seed(self) -> Optional[int]:
@@ -978,10 +1157,13 @@ class GravedancerTUI(App):
             if not clean:
                 continue
             if _METER_RE.search(clean):
+                # Token meters go to the run row (activity), not the shared
+                # log — they are noise when several runs stream at once.
                 now = time.perf_counter()
-                if now - self._last_meter.get(record.run_id, 0.0) < 1.5:
-                    continue
-                self._last_meter[record.run_id] = now
+                if now - self._last_meter.get(record.run_id, 0.0) >= 1.5:
+                    self._last_meter[record.run_id] = now
+                    record.activity = clean.strip()
+                continue
             record.progress.update(clean)
             self.post_message(RunLine(record.run_id, clean.strip()))
         code = proc.wait()
@@ -1077,6 +1259,29 @@ class GravedancerTUI(App):
             self._connect_remote()
         elif button_id == "deploy":
             self._deploy_remote()
+        elif button_id == "toggle-remote":
+            box = self.query_one("#remote-box", Vertical)
+            self._set_remote_box_visible(not box.display)
+
+    # ── quit guard ───────────────────────────────────────────────────────
+
+    def action_quit(self) -> None:
+        active = [r for r in self.runs.values() if r.status in ("running", "stopping")]
+        if not active:
+            self.exit()
+            return
+        self.push_screen(QuitConfirmScreen(len(active)), self._handle_quit_choice)
+
+    def _handle_quit_choice(self, choice: Optional[str]) -> None:
+        if choice == "keep":
+            self.exit()
+        elif choice == "kill":
+            for run_id in list(self.run_order):
+                record = self.runs.get(run_id)
+                if record and record.status in ("running", "stopping"):
+                    self._stop_run(run_id)
+            self.set_timer(1.5, self.exit)
+        # "cancel" / None: stay in the app
 
 
 if __name__ == "__main__":

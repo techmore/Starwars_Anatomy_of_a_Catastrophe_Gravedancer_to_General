@@ -8,6 +8,7 @@ by the LLM into a full episode with outline → story → banner → chapter pro
 """
 
 import argparse
+import atexit
 import json
 import signal
 import sys
@@ -128,6 +129,9 @@ def main(seed_value: int = DEFAULT_SEED_VALUE, model: Optional[str] = None):
     # ── 2. Initialize pipeline components ────────────────────────────────
     print("Initializing MLX client...")
     mlx = MLXClient()
+    # Guarantee weight release even when a phase raises: atexit runs after the
+    # exception propagates, and double-release is harmless (idempotent).
+    atexit.register(mlx.release_loaded_model)
     story_gen = StoryGenerator(mlx)
     prompt_gen = PromptGenerator(mlx)
     storage = EpisodeStorage(str(SETTINGS.storage_path))

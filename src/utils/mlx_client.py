@@ -211,6 +211,26 @@ def _bonsai_runtime_python() -> Path:
     return Path(os.environ.get("GRAVEDANCER_BONSAI_PYTHON", BONSAI_RUNTIME_DEFAULT)).expanduser()
 
 
+def _urlopen_with_retries(request: urllib.request.Request, attempts: int = 3, timeout: Optional[float] = None):
+    """Open a URL with bounded connect-retries.
+
+    Retries transient connection failures (refused/reset/timeout) with
+    exponential backoff. HTTPError responses (4xx/5xx) are server answers,
+    not transport faults, so they surface immediately.
+    """
+    last_exc: Exception = RuntimeError("unreachable")
+    for attempt in range(attempts):
+        try:
+            return urllib.request.urlopen(request, timeout=timeout)
+        except urllib.error.HTTPError:
+            raise
+        except (urllib.error.URLError, TimeoutError, ConnectionError, OSError) as exc:
+            last_exc = exc
+            if attempt < attempts - 1:
+                time.sleep(0.5 * (2 ** attempt))
+    raise last_exc
+
+
 class MLXClient:
     def __init__(self, model: str = DEFAULT_MODEL):
         self.model = model
@@ -241,11 +261,19 @@ class MLXClient:
         message = f"{system}\n\n{prompt}" if system else prompt
         command = [opencode, "run", "--format", "json", "--model", self._opencode_model_id(model), message]
         LOGGER.info("using OpenCode model=%s cwd=%s", self._opencode_model_id(model), Path.cwd())
-        try:
-            proc = subprocess.Popen(command, cwd=str(Path.cwd()), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        except OSError as exc:
-            raise RuntimeError(f"Could not start OpenCode: {exc}") from exc
-        assert proc.stdout is not None
+        proc = None
+        # One retry on spawn failure (transient binary/PATH issues); once the
+        # process is streaming we no longer retry.
+        for attempt in range(2):
+            try:
+                proc = subprocess.Popen(command, cwd=str(Path.cwd()), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                break
+            except OSError as exc:
+                if attempt == 0:
+                    time.sleep(0.5)
+                    continue
+                raise RuntimeError(f"Could not start OpenCode: {exc}") from exc
+        assert proc is not None
         # Drain stderr concurrently so a chatty child can never fill the pipe
         # and deadlock the stdout loop.
         stderr_chunks: List[str] = []
@@ -321,7 +349,7 @@ class MLXClient:
             headers={"Content-Type": "application/json"}, method="POST",
         )
         try:
-            with urllib.request.urlopen(request, timeout=max(180, max_tokens // 2)) as response:
+            with _urlopen_with_retries(request, timeout=max(180, max_tokens // 2)) as response:
                 data = json.loads(response.read().decode("utf-8"))
         except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
             raise RuntimeError(f"LM Studio request failed: {exc}") from exc
@@ -357,7 +385,7 @@ class MLXClient:
             method="POST",
         )
         try:
-            with urllib.request.urlopen(request, timeout=max(180, max_tokens // 2)) as response:
+            with _urlopen_with_retries(request, timeout=max(180, max_tokens // 2)) as response:
                 raw_output = ""
                 emitted_output = ""
                 for raw_line in response:
