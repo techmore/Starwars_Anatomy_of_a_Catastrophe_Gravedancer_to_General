@@ -686,6 +686,7 @@ class GravedancerTUI(App):
         self._state = _load_tui_state()
         self._state_dirty = False
         self.progress_visible = True
+        self._model_routes: Dict[str, Dict[str, str]] = {}
 
     # ── UI / messages ────────────────────────────────────────────────────
 
@@ -858,6 +859,12 @@ class GravedancerTUI(App):
             harness_name = self.harness.name if self.harness else "?"
             self._set_status(f"Model: [bold cyan]{self.selected_model}[/] · harness: {harness_name}")
             self._persist(model=self.selected_model)
+            route = self._model_routes.get(self.selected_model)
+            if route and self.harness is not None:
+                bases = self._state.setdefault("bases", {}).setdefault(self.harness.id, [])
+                if route["base"] not in bases:
+                    bases.append(route["base"])
+                    self._state_dirty = True
         elif event.option_list.id == "runs":
             self._select_run(str(event.option.id))
 
@@ -879,6 +886,33 @@ class GravedancerTUI(App):
             return
         self.call_from_thread(self._set_status, f"Loading models from {harness.name}…")
         try:
+            if harness.kind == "openai_http":
+                # Merge every known endpoint for this harness (the override
+                # field first), so parallel servers (e.g. e4b + 27B on
+                # different ports) appear as one selectable list.
+                bases: List[str] = []
+                if base:
+                    bases.append(base)
+                for candidate in harness.all_bases():
+                    if candidate not in bases:
+                        bases.append(candidate)
+                for extra in self._state.get("bases", {}).get(harness.id, []):
+                    if extra not in bases:
+                        bases.append(extra)
+                entries = harness_mod.discover_models_across_bases(bases)
+                choices = []
+                routes: Dict[str, Dict[str, str]] = {}
+                multiple = len({e["base"] for e in entries}) > 1
+                for entry in entries:
+                    label = entry["id"]
+                    if multiple:
+                        hostport = entry["base"].split("//", 1)[-1]
+                        label = f"{entry['id']} @{hostport}"
+                    choices.append(label)
+                    routes[label] = entry
+                self._model_routes = routes
+                self.call_from_thread(self._apply_model_choices, choices)
+                return
             choices = harness_mod.list_model_choices(harness, base)
         except Exception as exc:
             self.call_from_thread(
@@ -1176,9 +1210,15 @@ class GravedancerTUI(App):
         seed = self._parse_seed()
         if seed is None:
             return
-        ref = harness_mod.pipeline_model_ref(harness, model)
+        # Route to the exact server this model was discovered on (multi-server
+        # discovery labels options "model @host:port"); fall back to the
+        # harness default when the model came from a non-HTTP source.
+        route = self._model_routes.get(model)
+        real_model = route["id"] if route else model
+        route_base = route["base"] if route else None
+        ref = harness_mod.pipeline_model_ref(harness, real_model)
         env = os.environ.copy()
-        env.update(harness_mod.pipeline_environment(harness, self._current_base()))
+        env.update(harness_mod.pipeline_environment(harness, route_base or self._current_base()))
         env["GRAVEDANCER_MODEL"] = ref
         command = [
             sys.executable,

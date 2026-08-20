@@ -70,11 +70,14 @@ class Harness:
     Attributes:
         id: stable identifier.
         name: human-readable label for the TUI.
-        kind: ``"openai_http"`` or ``"mlx_native"``.
+        kind: ``"openai_http"``, ``"opencode_cli"`` or ``"mlx_native"``.
         default_base: server root (``http://host:port``) for HTTP harnesses.
         platforms: platform keys on which the harness is usable.
         note: one-line guidance shown in the TUI.
         env_url_override: env var that overrides ``default_base`` at runtime.
+        extra_bases: additional endpoints probed during model discovery so
+            parallel servers (e.g. two rapid-mlx instances on 1234/1235)
+            appear as one merged model list.
     """
 
     id: str
@@ -84,6 +87,17 @@ class Harness:
     platforms: frozenset
     note: str = ""
     env_url_override: str = ""
+    extra_bases: tuple = ()
+
+    def all_bases(self) -> List[str]:
+        """Default plus extra endpoints, defaults first."""
+        bases: List[str] = []
+        if self.default_base:
+            bases.append(self.default_base)
+        for extra in self.extra_bases:
+            if extra not in bases:
+                bases.append(extra)
+        return bases
 
     def base_url(self) -> str:
         """Resolve the server root, preferring the runtime env override."""
@@ -108,6 +122,7 @@ HARNESSES: List[Harness] = [
         platforms=_DARWIN,
         note="Apple Silicon only · MLX server with continuous batching & prefix cache",
         env_url_override="GRAVEDANCER_RAPIDMLX_URL",
+        extra_bases=("http://127.0.0.1:1235",),
     ),
     Harness(
         id="lm-studio",
@@ -297,6 +312,39 @@ def list_model_choices(harness: Harness, base: Optional[str] = None) -> List[str
     if harness.kind == "opencode_cli":
         return list_opencode_model_choices()
     return list_served_models(harness, base)
+
+
+def list_served_models_at(base: str) -> List[str]:
+    """List model ids served at one OpenAI-compatible base URL (no harness needed)."""
+    payload = _http_get_json(f"{base.rstrip('/')}/v1/models")
+    ids: List[str] = []
+    for item in payload.get("data", []):
+        if isinstance(item, dict) and item.get("id"):
+            ids.append(str(item["id"]))
+    return sorted(set(ids))
+
+
+def discover_models_across_bases(bases: List[str]) -> List[Dict[str, str]]:
+    """Probe several base URLs and return [{base, id}] for every reachable one.
+
+    Unreachable endpoints are skipped silently so a stopped server never
+    breaks discovery of the others.
+    """
+    found: List[Dict[str, str]] = []
+    seen: set = set()
+    for base in bases:
+        root = (base or "").strip().rstrip("/")
+        if not root:
+            continue
+        try:
+            for model_id in list_served_models_at(root):
+                key = (root, model_id)
+                if key not in seen:
+                    seen.add(key)
+                    found.append({"base": root, "id": model_id})
+        except Exception:
+            continue
+    return found
 
 
 def pipeline_model_ref(harness: Harness, model_id: str) -> str:
