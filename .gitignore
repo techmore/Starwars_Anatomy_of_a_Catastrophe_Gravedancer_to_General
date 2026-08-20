@@ -2,6 +2,14 @@
 log/
 log.txt
 *.bak
+.checkpoints/
+
+# Local run artifacts
+.models/
+Images/
+episodes/
+.oxalpha-run/
+.pytest_cache/
 
 # Python
 __pycache__/
