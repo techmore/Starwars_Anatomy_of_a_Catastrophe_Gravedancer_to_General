@@ -1,16 +1,12 @@
 """Visual prompt generation for Draw Things + Flux.2 Klein 4b and Wan 2.2."""
 
-import json
 import re
-from typing import Dict, Any, List, Optional
 import time
-from src.prompts.system_prompts import (
-    VISUAL_PROMPT_SYSTEM_PROMPT,
-    NEGATIVE_PROMPT_DEFAULT
-)
-from src.utils.logging_utils import get_logger
-from src.utils.contracts import TextGenerationBackend
+from typing import Any
 
+from src.prompts.system_prompts import NEGATIVE_PROMPT_DEFAULT, VISUAL_PROMPT_SYSTEM_PROMPT
+from src.utils.contracts import TextGenerationBackend
+from src.utils.logging_utils import get_logger
 
 LOGGER = get_logger(__name__)
 
@@ -28,8 +24,8 @@ class PromptGenerator:
         self,
         story: str,
         max_scenes_per_day: int = 2,
-        day_number: Optional[int] = None,
-    ) -> List[Dict[str, Any]]:
+        day_number: int | None = None,
+    ) -> list[dict[str, Any]]:
         """Extract key scenes from a full story or an individual day body.
 
         The library visual pipeline operates on one parsed day at a time, so
@@ -45,7 +41,7 @@ class PromptGenerator:
         if not day_matches and story and day_number is not None:
             day_matches = [(str(day_number), f"Day {day_number}", story)]
         
-        for day_num, day_title, day_content in day_matches:
+        for day_num, _day_title, day_content in day_matches:
             beat_blocks = self._extract_beat_blocks(day_content)
             if beat_blocks:
                 candidates = beat_blocks
@@ -85,11 +81,11 @@ class PromptGenerator:
         LOGGER.info("extract_scenes end scenes=%s elapsed=%.3fs", len(scenes), time.perf_counter() - start)
         return scenes
 
-    def _extract_beat_blocks(self, day_content: str) -> List[Dict[str, str]]:
+    def _extract_beat_blocks(self, day_content: str) -> list[dict[str, str]]:
         """Extract beat-labeled blocks from a day outline or story block."""
         beat_pattern = r"^- Beat\s+(\d+):\s*(.*?)(?=^- Beat\s+\d+:|^- Ending hook:|$)"
         matches = re.findall(beat_pattern, day_content, re.DOTALL | re.IGNORECASE | re.MULTILINE)
-        blocks: List[Dict[str, str]] = []
+        blocks: list[dict[str, str]] = []
         for beat_num, text in matches:
             clean_text = text.strip()
             if clean_text:
@@ -212,8 +208,8 @@ Focus on cinematic Star Wars aesthetic. Gravedancer visual: Kaleesh warrior, bon
         beat_label: str = "",
         aspect_ratio: str = "16:9",
         temperature: float = 0.7,
-        system_prompt: Optional[str] = None
-    ) -> Dict[str, str]:
+        system_prompt: str | None = None
+    ) -> dict[str, str]:
         """Generate image and video prompts for a scene."""
         start = time.perf_counter()
         LOGGER.info(
@@ -250,7 +246,7 @@ Focus on cinematic Star Wars aesthetic. Gravedancer visual: Kaleesh warrior, bon
         response: str,
         day_number: int,
         aspect_ratio: str
-    ) -> Dict[str, str]:
+    ) -> dict[str, str]:
         """Parse LLM response into structured prompts."""
         LOGGER.info("parse_scene_prompts start day=%s response_chars=%s", day_number, len(response or ""))
         parsed = {
@@ -322,12 +318,12 @@ Focus on cinematic Star Wars aesthetic. Gravedancer visual: Kaleesh warrior, bon
     
     def generate_batch_prompts(
         self,
-        scenes: List[Dict[str, Any]],
+        scenes: list[dict[str, Any]],
         model: str,
         aspect_ratio: str = "16:9",
         temperature: float = 0.7,
-        system_prompt: Optional[str] = None
-    ) -> List[Dict[str, str]]:
+        system_prompt: str | None = None
+    ) -> list[dict[str, str]]:
         """Generate prompts for multiple scenes."""
         results = []
         for i, scene in enumerate(scenes):
@@ -355,7 +351,7 @@ Focus on cinematic Star Wars aesthetic. Gravedancer visual: Kaleesh warrior, bon
     def extract_chapters(
         self,
         story: str,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Extract chapter-level sections from each day of a story.
 
         Returns a list of dicts with keys: day, day_title, chapter_index,
@@ -388,7 +384,7 @@ Focus on cinematic Star Wars aesthetic. Gravedancer visual: Kaleesh warrior, bon
                     })
         return chapters
 
-    def build_banner_prompt(self, metadata: Dict[str, Any]) -> str:
+    def build_banner_prompt(self, metadata: dict[str, Any]) -> str:
         """Build a prompt to generate an episode banner/hero image."""
         title = metadata.get("title", "Untitled")
         setting = metadata.get("setting", "Unknown")
@@ -414,11 +410,11 @@ Include the Gravedancer, the Jedi target, the setting, the tone, and cinematic S
 
     def generate_banner_prompt(
         self,
-        metadata: Dict[str, Any],
+        metadata: dict[str, Any],
         model: str,
         temperature: float = 0.7,
-        system_prompt: Optional[str] = None,
-    ) -> Dict[str, str]:
+        system_prompt: str | None = None,
+    ) -> dict[str, str]:
         """Generate a banner image prompt for an episode."""
         prompt_text = self.build_banner_prompt(metadata)
         system = system_prompt or VISUAL_PROMPT_SYSTEM_PROMPT
@@ -460,8 +456,8 @@ Include the Gravedancer, the Jedi target, the setting, the tone, and cinematic S
         model: str,
         aspect_ratio: str = "16:9",
         temperature: float = 0.7,
-        system_prompt: Optional[str] = None,
-    ) -> Dict[str, str]:
+        system_prompt: str | None = None,
+    ) -> dict[str, str]:
         """Generate a focused prompt set for one chapter."""
         prompt = f"""Generate image prompts for this chapter from "Gravedancer to General: Anatomy of a Catastrophe".
 
@@ -493,7 +489,7 @@ Include the Gravedancer, the Jedi target, the setting, the tone, and cinematic S
         )
         parsed = {"day": day_number, "chapter": chapter_index, "aspect_ratio": aspect_ratio}
         shot_labels = ("Establishing Shot", "Character / Action Shot", "Dramatic / Close-up Shot")
-        for key, label in zip(("wide", "medium", "closeup"), shot_labels):
+        for key, label in zip(("wide", "medium", "closeup"), shot_labels, strict=True):
             # Accept bold, Markdown-heading, numbered, and unnumbered forms.
             heading = rf"(?:\*\*\s*(?:\d+\.\s*)?{re.escape(label)}\s*:\s*\*\*|^\s*#+\s*(?:\d+\.\s*)?{re.escape(label)}\s*:?\s*$)"
             next_heading = "|".join(

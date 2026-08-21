@@ -5,12 +5,11 @@ Environment variables are intentionally small and explicit so local runs stay
 reproducible without requiring a configuration framework.
 """
 
-from dataclasses import dataclass
 import os
+from dataclasses import dataclass
 from pathlib import Path
 
 from src.utils.models import DEFAULT_MODEL
-
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 

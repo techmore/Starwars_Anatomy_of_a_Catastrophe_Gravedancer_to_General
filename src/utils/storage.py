@@ -1,26 +1,26 @@
 """Local storage for episodes - JSON + Markdown files."""
 
+import hashlib
+import io
 import json
 import os
-import io
-import hashlib
 import re
 import shutil
 import zipfile
 from datetime import datetime
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import Any
 from uuid import uuid4
 
 from src.utils.logging_utils import get_logger, log_timing
 
 
-def _target_jedi_name(metadata: Dict[str, Any]) -> str:
+def _target_jedi_name(metadata: dict[str, Any]) -> str:
     """Return the canonical target Jedi name, preferring the new field."""
     return str(metadata.get("target_jedi_name") or metadata.get("jedi_name") or "Unknown")
 
 
-def _normalize_metadata(metadata: Dict[str, Any]) -> Dict[str, Any]:
+def _normalize_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
     """Ensure both legacy and canonical target Jedi keys stay in sync."""
     target = _target_jedi_name(metadata)
     metadata["jedi_name"] = target
@@ -32,7 +32,7 @@ def _sha256_text(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
-def _summarize_prompts(prompts: Optional[Dict[str, Any]]) -> Dict[str, int]:
+def _summarize_prompts(prompts: dict[str, Any] | None) -> dict[str, int]:
     """Count prompt sets and covered days from a stored prompt payload."""
     scenes = prompts.get("scenes", []) if isinstance(prompts, dict) else []
     if not isinstance(scenes, list):
@@ -108,7 +108,7 @@ class EpisodeStorage:
         cls._atomic_write_text(path, json.dumps(value, indent=2, ensure_ascii=False))
 
     @staticmethod
-    def _read_json(path: Path) -> Optional[Any]:
+    def _read_json(path: Path) -> Any | None:
         try:
             with path.open("r", encoding="utf-8") as handle:
                 return json.load(handle)
@@ -127,11 +127,11 @@ class EpisodeStorage:
     def save_checkpoint(
         self,
         title: str,
-        metadata: Dict[str, Any],
-        day_drafts: Dict[int, str],
+        metadata: dict[str, Any],
+        day_drafts: dict[int, str],
         outline: str = "",
         scope: str = "",
-        day_recaps: Optional[Dict[int, str]] = None,
+        day_recaps: dict[int, str] | None = None,
     ) -> Path:
         """Atomically persist an in-progress story checkpoint.
 
@@ -159,12 +159,12 @@ class EpisodeStorage:
         self._atomic_write_json(path, payload)
         return path
 
-    def list_checkpoints(self) -> List[Dict[str, Any]]:
+    def list_checkpoints(self) -> list[dict[str, Any]]:
         """Return valid in-progress checkpoints, newest first."""
         checkpoint_dir = self.base_path / ".checkpoints"
         if not checkpoint_dir.is_dir():
             return []
-        results: List[Dict[str, Any]] = []
+        results: list[dict[str, Any]] = []
         for path in checkpoint_dir.glob("*.json"):
             payload = self._read_json(path)
             if not isinstance(payload, dict) or not payload.get("title"):
@@ -173,7 +173,7 @@ class EpisodeStorage:
             results.append(payload)
         return sorted(results, key=lambda item: item.get("updated_at", ""), reverse=True)
 
-    def load_checkpoint(self, checkpoint_path: str) -> Optional[Dict[str, Any]]:
+    def load_checkpoint(self, checkpoint_path: str) -> dict[str, Any] | None:
         """Load a checkpoint only when it is inside the checkpoint directory."""
         checkpoint_dir = (self.base_path / ".checkpoints").resolve()
         path = Path(checkpoint_path).expanduser()
@@ -223,8 +223,8 @@ class EpisodeStorage:
         self,
         title: str,
         story: str,
-        metadata: Dict[str, Any],
-        prompts: Optional[Dict[str, Any]] = None
+        metadata: dict[str, Any],
+        prompts: dict[str, Any] | None = None
     ) -> str:
         """Save episode to local storage."""
         episode_id = self._generate_episode_id(title)
@@ -261,7 +261,7 @@ class EpisodeStorage:
         
         return episode_id
     
-    def load_episode(self, episode_id: str) -> Optional[Dict[str, Any]]:
+    def load_episode(self, episode_id: str) -> dict[str, Any] | None:
         """Load episode from storage."""
         LOGGER.info("load_episode start episode_id=%s", episode_id)
         try:
@@ -315,7 +315,7 @@ class EpisodeStorage:
         )
         return episode
 
-    def export_episode_bundle(self, episode_id: str) -> Optional[Dict[str, Any]]:
+    def export_episode_bundle(self, episode_id: str) -> dict[str, Any] | None:
         """Return a canonical export bundle for an episode."""
         LOGGER.info("export_episode_bundle start episode_id=%s", episode_id)
         episode = self.load_episode(episode_id)
@@ -338,7 +338,7 @@ class EpisodeStorage:
         for key, file_path in files.items():
             path = Path(file_path)
             exists = path.exists()
-            entry: Dict[str, Any] = {
+            entry: dict[str, Any] = {
                 "path": file_path,
                 "filename": path.name,
                 "exists": exists,
@@ -378,7 +378,7 @@ class EpisodeStorage:
         )
         return bundle_payload
 
-    def write_episode_bundle(self, episode_id: str, filename: str = "bundle.json") -> Optional[str]:
+    def write_episode_bundle(self, episode_id: str, filename: str = "bundle.json") -> str | None:
         """Write the canonical bundle to disk and return the file path."""
         LOGGER.info("write_episode_bundle start episode_id=%s filename=%s", episode_id, filename)
         bundle = self.export_episode_bundle(episode_id)
@@ -392,7 +392,7 @@ class EpisodeStorage:
         LOGGER.info("write_episode_bundle end episode_id=%s path=%s", episode_id, bundle_path)
         return str(bundle_path)
 
-    def write_episode_archive(self, episode_id: str, filename: str = "bundle.zip") -> Optional[str]:
+    def write_episode_archive(self, episode_id: str, filename: str = "bundle.zip") -> str | None:
         """Write the episode bundle and source files to a zip archive."""
         LOGGER.info("write_episode_archive start episode_id=%s filename=%s", episode_id, filename)
         archive_bytes = self.build_episode_archive_bytes(episode_id)
@@ -411,7 +411,7 @@ class EpisodeStorage:
         LOGGER.info("write_episode_archive end episode_id=%s path=%s bytes=%s", episode_id, archive_path, len(archive_bytes))
         return str(archive_path)
 
-    def build_episode_archive_bytes(self, episode_id: str) -> Optional[bytes]:
+    def build_episode_archive_bytes(self, episode_id: str) -> bytes | None:
         """Build the episode archive as zip bytes."""
         LOGGER.info("build_episode_archive_bytes start episode_id=%s", episode_id)
         bundle = self.export_episode_bundle(episode_id)
@@ -423,7 +423,7 @@ class EpisodeStorage:
         with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
             zf.writestr("bundle.json", json.dumps(bundle, indent=2))
             zf.writestr("manifest.json", json.dumps(bundle["manifest"], indent=2))
-            for key, file_path in bundle["files"].items():
+            for file_path in bundle["files"].values():
                 path = Path(file_path)
                 if path.exists():
                     zf.write(path, arcname=path.name)
@@ -441,7 +441,7 @@ class EpisodeStorage:
         LOGGER.info("build_episode_archive_bytes end episode_id=%s bytes=%s", episode_id, len(archive))
         return archive
     
-    def list_episodes(self) -> List[Dict[str, Any]]:
+    def list_episodes(self) -> list[dict[str, Any]]:
         """List all episodes with metadata."""
         LOGGER.info("list_episodes start base_path=%s", self.base_path)
         episodes = []
@@ -487,9 +487,9 @@ class EpisodeStorage:
     def update_episode(
         self,
         episode_id: str,
-        story: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
-        prompts: Optional[Dict[str, Any]] = None
+        story: str | None = None,
+        metadata: dict[str, Any] | None = None,
+        prompts: dict[str, Any] | None = None
     ) -> bool:
         """Update an existing episode.
 
@@ -507,7 +507,7 @@ class EpisodeStorage:
 
         # Always load the current metadata so we can use it as a header source.
         metadata_path = ep_dir / "metadata.json"
-        existing_metadata: Dict[str, Any] = {}
+        existing_metadata: dict[str, Any] = {}
         if metadata_path.exists():
             loaded_metadata = self._read_json(metadata_path)
             if not isinstance(loaded_metadata, dict):
@@ -561,7 +561,7 @@ class EpisodeStorage:
         day: int,
         shot: str,
         image_bytes: bytes,
-        variant: Optional[int] = None,
+        variant: int | None = None,
     ) -> str:
         """Save a keyframe image to the episode's images/ directory.
 

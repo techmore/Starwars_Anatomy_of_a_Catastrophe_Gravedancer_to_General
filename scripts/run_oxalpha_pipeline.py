@@ -19,7 +19,7 @@ import time
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Any
+from typing import Any
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
@@ -27,11 +27,11 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from src.utils.creative_tables import generate_creative_seed
 from src.utils.logging_utils import get_logger
-from src.utils.story_generator import StoryGenerator
-from src.utils.storage import EpisodeStorage
 from src.utils.prompt_generator import PromptGenerator
-from src.utils.settings import SETTINGS
 from src.utils.prompt_schema import validate_outline_structure
+from src.utils.settings import SETTINGS
+from src.utils.storage import EpisodeStorage
+from src.utils.story_generator import StoryGenerator
 
 LOGGER = get_logger(__name__)
 
@@ -57,7 +57,7 @@ class OxAlphaBackend:
         self.prompt_dir = run_dir / "prompts"
         self.prompt_dir.mkdir(parents=True, exist_ok=True)
         self.collect_prompts = collect_prompts
-        self.calls: list[Dict[str, str]] = []
+        self.calls: list[dict[str, str]] = []
         self._counter = 0
 
     def resolve_response_path(self, prompt: str) -> Path:
@@ -106,7 +106,7 @@ class OxAlphaBackend:
         return self._load(prompt)
 
 
-def _map_seed_to_metadata(seed: Dict[str, Any]) -> Dict[str, Any]:
+def _map_seed_to_metadata(seed: dict[str, Any]) -> dict[str, Any]:
     return {
         "title": seed["title"],
         "num_days": seed["num_days"],
@@ -160,8 +160,8 @@ def main(seed_value: int, run_dir: Path) -> int:
         ),
         None,
     )
-    day_drafts: Dict[int, str] = {}
-    day_recaps: Dict[int, str] = {}
+    day_drafts: dict[int, str] = {}
+    day_recaps: dict[int, str] = {}
     draft_only = False
     if resumed:
         drafts = resumed.get("day_drafts") or {}

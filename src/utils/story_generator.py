@@ -1,12 +1,17 @@
 """Story generation logic using MLX."""
 
-from typing import Callable, Dict, Any, Optional, List
 import json
+import os
 import re
 import time
-import os
+from collections.abc import Callable
+from typing import Any
+
 from src.prompts.system_prompts import STORY_GENERATION_SYSTEM_PROMPT
+from src.utils.contracts import ProgressCallback, TextGenerationBackend
+from src.utils.logging_utils import get_logger
 from src.utils.prompt_schema import (
+    DAILY_TARGET_TOKENS,
     STORY_DAY_EXPANSION_HEADER,
     STORY_DAY_HEADING,
     STORY_EPISODE_ARC_HEADER,
@@ -14,7 +19,6 @@ from src.utils.prompt_schema import (
     STORY_OUTLINE_HEADER,
     STORY_SECTION_EXPANSION_HEADER,
     STORY_TONE_LINE,
-    DAILY_TARGET_TOKENS,
     TARGET_WORDS_PER_DAY,
     build_story_constraints_block,
     build_story_deepening_block,
@@ -25,9 +29,6 @@ from src.utils.prompt_schema import (
     validate_outline_structure,
     validate_story_prompt_inputs,
 )
-from src.utils.logging_utils import get_logger
-from src.utils.contracts import ProgressCallback, TextGenerationBackend
-
 
 LOGGER = get_logger(__name__)
 
@@ -81,7 +82,7 @@ def _retry_outline(
     expected_days: int,
     attempts: int,
     on_attempt: Callable[[int, int], None] | None = None,
-) -> tuple[str, List[str]]:
+) -> tuple[str, list[str]]:
     """Call ``gen`` until the outline validates or attempts are exhausted.
 
     Qwen/Gemma GGUFs served by Ollama occasionally EOS-truncate mid-structure;
@@ -90,7 +91,7 @@ def _retry_outline(
     transient blip. Returns ``(outline, errors)``; errors is empty on success.
     """
     outline = ""
-    errors: List[str] = ["no attempt made"]
+    errors: list[str] = ["no attempt made"]
     for attempt in range(1, attempts + 1):
         if on_attempt:
             on_attempt(attempt, attempts)
@@ -135,9 +136,9 @@ class StoryGenerator:
         self,
         title: str,
         num_days: int,
-        jedi_details: Dict[str, str],
+        jedi_details: dict[str, str],
         setting: str,
-        tone_focus: List[str],
+        tone_focus: list[str],
         additional_instructions: str
     ) -> str:
         """Build the user prompt for story generation."""
@@ -192,9 +193,9 @@ Begin with "{STORY_DAY_HEADING.format(day_number=1)}" and continue through "{STO
         self,
         title: str,
         num_days: int,
-        jedi_details: Dict[str, str],
+        jedi_details: dict[str, str],
         setting: str,
-        tone_focus: List[str],
+        tone_focus: list[str],
         additional_instructions: str,
     ) -> str:
         """Build a structured planning prompt for the full episode."""
@@ -272,9 +273,9 @@ Rules:
         day_outline: str,
         day_draft: str,
         previous_day: str,
-        jedi_details: Dict[str, str],
+        jedi_details: dict[str, str],
         setting: str,
-        tone_focus: List[str],
+        tone_focus: list[str],
         additional_instructions: str,
     ) -> str:
         """Build a focused prompt to expand one outlined day into prose."""
@@ -332,9 +333,9 @@ Requirements:
         section_outline: str,
         prior_text: str,
         day_outline: str,
-        jedi_details: Dict[str, str],
+        jedi_details: dict[str, str],
         setting: str,
-        tone_focus: List[str],
+        tone_focus: list[str],
         additional_instructions: str,
         story_so_far: str = "",
     ) -> str:
@@ -409,7 +410,7 @@ Do not retell the plot beat-by-beat. Do not comment on style or quality. Facts o
         title: str,
         day_number: int,
         day_text: str,
-        system_prompt: Optional[str] = None,
+        system_prompt: str | None = None,
     ) -> str:
         """Summarize a completed day into a compact continuity digest."""
         prompt = self.build_day_recap_prompt(title=title, day_number=day_number, day_text=day_text)
@@ -435,12 +436,12 @@ Do not retell the plot beat-by-beat. Do not comment on style or quality. Facts o
         model: str,
         title: str,
         num_days: int,
-        jedi_details: Dict[str, str],
+        jedi_details: dict[str, str],
         setting: str,
-        tone_focus: List[str],
+        tone_focus: list[str],
         additional_instructions: str,
         temperature: float = 0.8,
-        system_prompt: Optional[str] = None
+        system_prompt: str | None = None
     ) -> str:
         """Generate a complete story.
 
@@ -478,12 +479,12 @@ Do not retell the plot beat-by-beat. Do not comment on style or quality. Facts o
         model: str,
         title: str,
         num_days: int,
-        jedi_details: Dict[str, str],
+        jedi_details: dict[str, str],
         setting: str,
-        tone_focus: List[str],
+        tone_focus: list[str],
         additional_instructions: str,
         temperature: float = 0.5,
-        system_prompt: Optional[str] = None,
+        system_prompt: str | None = None,
         progress_callback: ProgressCallback | None = None,
         max_tokens: int | None = None,
     ) -> str:
@@ -502,7 +503,7 @@ Do not retell the plot beat-by-beat. Do not comment on style or quality. Facts o
         )
         start = time.perf_counter()
         if progress_callback:
-            chunks: List[str] = []
+            chunks: list[str] = []
             # Throttled snapshot join — see _stream_generate for rationale.
             last_snapshot = 0.0
             for chunk in self.mlx.generate_stream(
@@ -527,16 +528,16 @@ Do not retell the plot beat-by-beat. Do not comment on style or quality. Facts o
         model: str,
         title: str,
         num_days: int,
-        jedi_details: Dict[str, str],
+        jedi_details: dict[str, str],
         setting: str,
-        tone_focus: List[str],
+        tone_focus: list[str],
         additional_instructions: str,
         temperature: float = 0.8,
-        system_prompt: Optional[str] = None,
-        outline: Optional[str] = None,
-        day_drafts: Optional[Dict[int, str]] = None,
-        day_recaps: Optional[Dict[int, str]] = None,
-        recap_model: Optional[str] = None,
+        system_prompt: str | None = None,
+        outline: str | None = None,
+        day_drafts: dict[int, str] | None = None,
+        day_recaps: dict[int, str] | None = None,
+        recap_model: str | None = None,
         draft_only: bool = False,
         progress_callback: ProgressCallback | None = None,
         outline_max_tokens: int | None = None,
@@ -570,12 +571,12 @@ Do not retell the plot beat-by-beat. Do not comment on style or quality. Facts o
             message: str,
             model: str,
             prompt: str,
-            system_prompt: Optional[str],
+            system_prompt: str | None,
             temperature: float,
             max_tokens: int,
         ) -> str:
             _emit(stage, message)
-            chunks: List[str] = []
+            chunks: list[str] = []
             # Joining every chunk is O(n^2) across a long stream; consumers
             # only sample the text on a timer, so refresh the snapshot at
             # most twice per second and emit without text in between.
@@ -701,10 +702,10 @@ Do not retell the plot beat-by-beat. Do not comment on style or quality. Facts o
                     time.perf_counter() - outline_start,
                 )
         day_blocks = self._split_outline_days(outline)
-        day_stories: List[str] = []
+        day_stories: list[str] = []
         previous_day = ""
         recaps_enabled = _story_so_far_enabled()
-        recap_entries: List[str] = []
+        recap_entries: list[str] = []
         seen_recap_days: set = set()
 
         def _append_recap(day_number: int, recap_text: str) -> None:
@@ -720,7 +721,7 @@ Do not retell the plot beat-by-beat. Do not comment on style or quality. Facts o
             joined = "\n\n".join(recap_entries)
             if len(joined) <= STORY_SO_FAR_MAX_CHARS:
                 return joined
-            trimmed: List[str] = []
+            trimmed: list[str] = []
             budget = STORY_SO_FAR_MAX_CHARS
             for entry in reversed(recap_entries):
                 if budget <= 0:
@@ -758,7 +759,7 @@ Do not retell the plot beat-by-beat. Do not comment on style or quality. Facts o
             else:
                 reused_draft = False
                 section_blocks = self._split_day_sections(day_outline)
-                section_texts: List[str] = []
+                section_texts: list[str] = []
                 # Keep only a short continuity tail so the model does not start echoing prior sections.
                 prior_text = self._tail_for_context(previous_day, max_chars=max(2500, _section_tail_chars()))
                 LOGGER.info("day section loop begin title=%s day=%s section_count=%s", title, day_number, len(section_blocks))
@@ -881,14 +882,14 @@ Do not retell the plot beat-by-beat. Do not comment on style or quality. Facts o
         )
         return "\n\n".join(day_stories)
 
-    def _split_outline_days(self, outline: str) -> Dict[int, str]:
-        blocks: Dict[int, str] = {}
+    def _split_outline_days(self, outline: str) -> dict[int, str]:
+        blocks: dict[int, str] = {}
         pattern = r"(## DAY (\d+):.*?)(?=## DAY \d+:|$)"
         for block, day_num in re.findall(pattern, outline, re.DOTALL | re.IGNORECASE):
             blocks[int(day_num)] = block.strip()
         return blocks
 
-    def _split_day_sections(self, day_outline: str) -> List[str]:
+    def _split_day_sections(self, day_outline: str) -> list[str]:
         """Extract chapter outline blocks from a day outline block."""
         text = day_outline.strip()
         if not text:
@@ -931,7 +932,7 @@ Do not retell the plot beat-by-beat. Do not comment on style or quality. Facts o
             sentences = [body]
 
         beat_count = min(max(len(sentences), 4), 8)
-        chunks: List[str] = []
+        chunks: list[str] = []
         for idx in range(beat_count):
             if idx >= len(sentences):
                 break
@@ -974,9 +975,9 @@ Do not retell the plot beat-by-beat. Do not comment on style or quality. Facts o
             return match.group(1).strip()
         return ""
 
-    def parse_outline_days(self, outline: str) -> List[Dict[str, Any]]:
+    def parse_outline_days(self, outline: str) -> list[dict[str, Any]]:
         """Parse an outline into day blocks and section outlines."""
-        days: List[Dict[str, Any]] = []
+        days: list[dict[str, Any]] = []
         day_pattern = r"## DAY (\d+):\s*(.*?)(?=## DAY \d+:|$)"
         for day_num, block in re.findall(day_pattern, outline, re.DOTALL | re.IGNORECASE):
             lines = [line.strip() for line in block.splitlines() if line.strip()]
@@ -1006,10 +1007,10 @@ Do not retell the plot beat-by-beat. Do not comment on style or quality. Facts o
             )
         return days
 
-    def _parse_day_sections(self, lines: List[str]) -> List[Dict[str, str]]:
+    def _parse_day_sections(self, lines: list[str]) -> list[dict[str, str]]:
         """Parse chapter lines into editable outline blocks."""
-        sections: List[Dict[str, str]] = []
-        current: Optional[Dict[str, str]] = None
+        sections: list[dict[str, str]] = []
+        current: dict[str, str] | None = None
         for line in lines:
             lower = line.lower()
             if lower.startswith("- chapter"):
@@ -1032,12 +1033,12 @@ Do not retell the plot beat-by-beat. Do not comment on style or quality. Facts o
         full_story: str,
         title: str,
         num_days: int,
-        jedi_details: Dict[str, str],
+        jedi_details: dict[str, str],
         setting: str,
-        tone_focus: List[str],
+        tone_focus: list[str],
         additional_instructions: str,
         temperature: float = 0.8,
-        system_prompt: Optional[str] = None
+        system_prompt: str | None = None
     ) -> str:
         """Regenerate a specific day."""
         # Extract context from other days
@@ -1084,7 +1085,7 @@ Do not retell the plot beat-by-beat. Do not comment on style or quality. Facts o
         
         return new_story
     
-    def parse_days(self, story: str) -> List[Dict[str, str]]:
+    def parse_days(self, story: str) -> list[dict[str, str]]:
         """Parse story into day sections. Each day includes `word_count`."""
         days = []
         pattern = r"^## DAY (\d+):\s*(.*?)(?=^## DAY \d+:|\Z)"
@@ -1103,7 +1104,7 @@ Do not retell the plot beat-by-beat. Do not comment on style or quality. Facts o
         
         return days
     
-    def get_stats(self, story: str) -> Dict[str, Any]:
+    def get_stats(self, story: str) -> dict[str, Any]:
         """Get story statistics."""
         words = len(story.split())
         reading_time = max(1, round(words / 200))  # 200 wpm
@@ -1123,9 +1124,9 @@ Do not retell the plot beat-by-beat. Do not comment on style or quality. Facts o
         outline: str,
         title: str,
         num_days: int,
-        jedi_details: Dict[str, str],
+        jedi_details: dict[str, str],
         setting: str,
-        tone_focus: List[str],
+        tone_focus: list[str],
     ) -> str:
         """Build a prompt that asks the model to rate and critique the episode."""
         tone_section = f"\n**TONE / FOCUS:** {', '.join(tone_focus)}" if tone_focus else ""
@@ -1168,9 +1169,9 @@ Score: NN/100
 
     CRITIQUE_SYSTEM_PROMPT = """You are a ruthless but fair story editor specializing in dark thriller fiction. You evaluate prose for pacing, sensory immersion, character interiority, dialogue quality, tactical plausibility, and thematic resonance. You are specific — you cite examples. You never give a perfect score; there is always room to improve. You write your feedback in clear, direct prose."""
 
-    def parse_critique_report(self, text: str, num_days: int) -> Dict[str, Any]:
+    def parse_critique_report(self, text: str, num_days: int) -> dict[str, Any]:
         """Parse the critique LLM response into structured data."""
-        report: Dict[str, Any] = {
+        report: dict[str, Any] = {
             "days": [],
             "overall": {
                 "score": None,
@@ -1239,13 +1240,13 @@ Score: NN/100
         outline: str,
         title: str,
         num_days: int,
-        jedi_details: Dict[str, str],
+        jedi_details: dict[str, str],
         setting: str,
-        tone_focus: List[str],
+        tone_focus: list[str],
         temperature: float = 0.3,
-        system_prompt: Optional[str] = None,
+        system_prompt: str | None = None,
         progress_callback: ProgressCallback | None = None,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Run a critique pass on the completed story and return structured feedback."""
         prompt = self.build_critique_prompt(
             full_story=full_story,

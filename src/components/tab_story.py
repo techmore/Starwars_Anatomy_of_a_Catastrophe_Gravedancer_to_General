@@ -6,31 +6,45 @@ Ports the working render_story_stage() logic from app.py and adds:
 """
 
 import re
+
 import streamlit as st
 
-from src.utils.concepts import (
-    get_used_jedi_names, build_concept_context_prompt, build_concept_extraction_prompt,
-    build_missing_fields_repair_prompt,
-    try_parse_full_episode_concept,
-    _strip_context_reasoning,
-    VALID_TONES,
-)
-from src.utils.series_bible import format_for_prompt as format_bible_for_prompt, load_entries as load_bible_entries
-from src.utils.logging_utils import get_logger, start_new_run_log, write_debug_artifact
-from src.components.pipeline_timeline import render_pipeline_timeline, PipelineTracker, _fmt_duration as _fmt_total
+from src.components.pipeline_timeline import PipelineTracker, render_pipeline_timeline
+from src.components.pipeline_timeline import _fmt_duration as _fmt_total
+from src.components.story_warnings import render_warnings
 from src.components.ui import preformatted_html
-from src.utils.streaming_ui import build_stream_runtime, finalize_stream_state, render_cached_outline_banner, render_stream_update, reset_stream_panels
+from src.utils.concepts import (
+    VALID_TONES,
+    _strip_context_reasoning,
+    build_concept_context_prompt,
+    build_concept_extraction_prompt,
+    build_missing_fields_repair_prompt,
+    get_used_jedi_names,
+    try_parse_full_episode_concept,
+)
+from src.utils.logging_utils import get_logger, start_new_run_log, write_debug_artifact
+from src.utils.prompt_schema import (
+    DAILY_TARGET_TOKENS,
+    validate_concept_dict,
+    validate_outline_structure,
+)
+from src.utils.series_bible import format_for_prompt as format_bible_for_prompt
+from src.utils.series_bible import load_entries as load_bible_entries
 from src.utils.session_state import (
+    GENERATION_PROFILES,
     build_episode_payload,
     hydrate_story_inputs,
-    reset_story_flow,
     render_episode_prompt_archive_summary,
-    GENERATION_PROFILES,
+    reset_story_flow,
 )
-from src.utils.prompt_schema import DAILY_TARGET_TOKENS, validate_concept_dict, validate_outline_structure
 from src.utils.story_validator import validate_story
-from src.components.story_warnings import render_warnings
-
+from src.utils.streaming_ui import (
+    build_stream_runtime,
+    finalize_stream_state,
+    render_cached_outline_banner,
+    render_stream_update,
+    reset_stream_panels,
+)
 
 LOGGER = get_logger(__name__)
 

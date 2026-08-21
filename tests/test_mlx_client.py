@@ -1,12 +1,18 @@
-import os
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from src.utils.mlx_client import BONSAI_1BIT_MODEL, MLXClient, _apply_chat_template, _configure_local_model_mode, _redact_command_arguments
+from src.utils.mlx_client import (
+    BONSAI_1BIT_MODEL,
+    MLXClient,
+    _apply_chat_template,
+    _configure_local_model_mode,
+    _redact_command_arguments,
+)
 
 
 class TestChatTemplate(unittest.TestCase):

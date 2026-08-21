@@ -1,14 +1,17 @@
 """Tab 3: Scene Prompts & Visual Pipeline for Draw Things + Flux.2 Klein 4b + Wan 2.2."""
 
-import streamlit as st
 import json
-from typing import List, Dict, Any
-from src.utils.prompt_generator import PromptGenerator
-from src.utils.story_generator import StoryGenerator
-from src.utils.storage import EpisodeStorage
-from src.utils.logging_utils import start_new_run_log
-from src.utils.session_state import episode_selector_label, normalize_saved_prompt_sets_for_selection
+
+import streamlit as st
+
 from src.components.ui import preformatted_html
+from src.utils.logging_utils import start_new_run_log
+from src.utils.prompt_generator import PromptGenerator
+from src.utils.session_state import (
+    episode_selector_label,
+    normalize_saved_prompt_sets_for_selection,
+)
+from src.utils.storage import EpisodeStorage
 
 
 def render_prompts_tab(
@@ -17,7 +20,6 @@ def render_prompts_tab(
 ):
     """Render the scene prompts/visual pipeline tab."""
     prompt_gen: PromptGenerator = context.prompt_gen
-    story_gen: StoryGenerator = context.story_gen
     storage: EpisodeStorage = context.storage
     model: str = context.mlx_model
     temperature: float = context.temperature
@@ -42,8 +44,6 @@ def render_prompts_tab(
         return
     
     story = episode["story"]
-    metadata = episode["metadata"]
-    
     st.markdown("---")
     
     # Settings
@@ -116,7 +116,7 @@ def render_prompts_tab(
             if scene.get("beat_label"):
                 st.caption(f"Beat anchor: {scene['beat_label']}")
             st.markdown(f"```\n{scene['text']}\n```")
-            if st.checkbox(f"Include this scene", value=True, key=f"scene_select_{selected_id}_{i}"):
+            if st.checkbox("Include this scene", value=True, key=f"scene_select_{selected_id}_{i}"):
                 selected_scenes.append(scene)
     
     st.markdown("---")
@@ -325,7 +325,7 @@ def render_prompts_tab(
             text_export += f"DRAMATIC/LOW ANGLE:\n{result.get('dramatic', '')}\n\n"
             text_export += f"ALTERNATE STYLE:\n{result.get('alternate', '')}\n\n"
             text_export += f"NEGATIVE PROMPT:\n{result.get('negative_prompt', '')}\n\n"
-            text_export += f"--- WAN 2.2 VIDEO ---\n\n"
+            text_export += "--- WAN 2.2 VIDEO ---\n\n"
             text_export += f"KEYFRAME:\n{result.get('video_keyframe', '')}\n\n"
             text_export += f"MOTION:\n{result.get('video_motion', '')}\n\n"
             text_export += f"CAMERA:\n{result.get('video_camera', '')}\n\n"

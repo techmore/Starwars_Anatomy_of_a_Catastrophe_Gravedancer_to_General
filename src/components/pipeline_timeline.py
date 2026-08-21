@@ -7,10 +7,8 @@ completed stage.
 """
 
 import time
-from typing import List, Dict, Optional
 
 from src.utils._streamlit_fallback import st
-
 
 PIPELINE_STAGES = [
     ("concept", "Concept", "1"),
@@ -34,14 +32,14 @@ class PipelineTracker:
     """
 
     def __init__(self) -> None:
-        self._start_times: Dict[str, float] = {}
-        self._end_times: Dict[str, float] = {}
-        self._stage_start_wall: Dict[str, float] = {}
-        self._stage_end_wall: Dict[str, float] = {}
+        self._start_times: dict[str, float] = {}
+        self._end_times: dict[str, float] = {}
+        self._stage_start_wall: dict[str, float] = {}
+        self._stage_end_wall: dict[str, float] = {}
         self._global_start: float = time.perf_counter()
         self._global_start_wall: float = time.time()
-        self._global_end: Optional[float] = None
-        self._global_end_wall: Optional[float] = None
+        self._global_end: float | None = None
+        self._global_end_wall: float | None = None
 
     def start(self, stage: str) -> None:
         """Record the start time for *stage*."""
@@ -59,7 +57,7 @@ class PipelineTracker:
         self._global_end = time.perf_counter()
         self._global_end_wall = time.time()
 
-    def duration(self, stage: str) -> Optional[float]:
+    def duration(self, stage: str) -> float | None:
         """Return the elapsed seconds for *stage*, or None if incomplete."""
         s = self._start_times.get(stage)
         e = self._end_times.get(stage)
@@ -67,7 +65,7 @@ class PipelineTracker:
             return e - s
         return None
 
-    def cumulative_offset(self, stage: str) -> Optional[float]:
+    def cumulative_offset(self, stage: str) -> float | None:
         """Return seconds from global start to this stage's start, or None."""
         s = self._start_times.get(stage)
         if s is not None:
@@ -75,7 +73,7 @@ class PipelineTracker:
         return None
 
     @property
-    def timings(self) -> Dict[str, float]:
+    def timings(self) -> dict[str, float]:
         """Return a ``{stage: seconds}`` dict for all completed stages."""
         return {
             stage: dur
@@ -142,9 +140,9 @@ def _fmt_duration(seconds: float) -> str:
 
 def render_pipeline_timeline(
     active_stage: str,
-    completed_stages: Optional[List[str]] = None,
-    error_stage: Optional[str] = None,
-    tracker: Optional[PipelineTracker] = None,
+    completed_stages: list[str] | None = None,
+    error_stage: str | None = None,
+    tracker: PipelineTracker | None = None,
     widget=None,
 ) -> None:
     """Render the horizontal pipeline timeline.
@@ -171,11 +169,11 @@ def render_pipeline_timeline(
 def _build_timeline_html(
     active_stage: str,
     completed: set,
-    error_stage: Optional[str],
-    tracker: Optional[PipelineTracker],
+    error_stage: str | None,
+    tracker: PipelineTracker | None,
 ) -> str:
     """Build the HTML for the pipeline timeline."""
-    steps_html: List[str] = []
+    steps_html: list[str] = []
     for i, (key, label, num) in enumerate(PIPELINE_STAGES):
         if key == error_stage:
             cls = "error"

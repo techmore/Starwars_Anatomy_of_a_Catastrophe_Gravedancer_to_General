@@ -5,6 +5,7 @@ Kept dependency-free except for streamlit so any tab can import it safely.
 
 import base64
 from html import escape
+
 import streamlit as st
 
 # Aspect ratio -> (width, height) pairs tuned for Flux.2 Klein 4b.

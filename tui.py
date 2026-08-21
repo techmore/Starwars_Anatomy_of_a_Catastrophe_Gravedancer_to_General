@@ -32,7 +32,7 @@ import uuid
 import webbrowser
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from rich.text import Text
 from textual import work
@@ -64,7 +64,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent
 STATE_PATH = Path.home() / ".gravedancer" / "tui-state.json"
 
 
-def _load_tui_state() -> Dict[str, Any]:
+def _load_tui_state() -> dict[str, Any]:
     """Load persisted TUI selections (harness/model/seed/url), tolerating absence."""
     try:
         data = json.loads(STATE_PATH.read_text(encoding="utf-8"))
@@ -73,7 +73,7 @@ def _load_tui_state() -> Dict[str, Any]:
         return {}
 
 
-def _save_tui_state(state: Dict[str, Any]) -> None:
+def _save_tui_state(state: dict[str, Any]) -> None:
     try:
         STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
         STATE_PATH.write_text(json.dumps(state, indent=2), encoding="utf-8")
@@ -81,7 +81,7 @@ def _save_tui_state(state: Dict[str, Any]) -> None:
         pass
 
 
-def find_model_disk_path(model_id: str) -> Optional[Path]:
+def find_model_disk_path(model_id: str) -> Path | None:
     """Locate a locally downloaded MLX checkpoint directory for *model_id*."""
     for root in (PROJECT_ROOT / ".models", Path.home() / ".models"):
         candidate = root / model_id
@@ -124,7 +124,7 @@ p { line-height: 1.75; margin: .9rem 0; text-align: justify; }
 """
 
 
-def write_episode_html(base_path: Path, episode_id: str) -> Optional[Path]:
+def write_episode_html(base_path: Path, episode_id: str) -> Path | None:
     """Render an episode as a styled HTML reading view.
 
     Returns the written file path, or None when the episode has no story yet.
@@ -151,7 +151,7 @@ def write_episode_html(base_path: Path, episode_id: str) -> Optional[Path]:
     meta_line = (f"Days: {metadata.get('num_days', '?')} · Jedi: {jedi} · "
                  f"Tone: {_html.escape(tone) or '?'} · Model: {model}")
 
-    body_parts: List[str] = []
+    body_parts: list[str] = []
     total_words = 0
     blocks = re.split(r"(?=^## DAY \d+:)", story, flags=re.MULTILINE)
     day_re = re.compile(r"^## DAY (\d+):\s*(.+)$", re.MULTILINE)
@@ -210,18 +210,18 @@ class RunRecord:
     local: bool
     seed: int
     started: float
-    popen: Optional[subprocess.Popen] = None
-    target: Optional[RemoteTarget] = None
+    popen: subprocess.Popen | None = None
+    target: RemoteTarget | None = None
     marker: str = ""
     status: str = "running"
-    code: Optional[int] = None
-    ended: Optional[float] = None
-    lines: List[str] = field(default_factory=list)
-    episode_id: Optional[str] = None
-    progress: "RunProgress" = field(default_factory=lambda: RunProgress())
+    code: int | None = None
+    ended: float | None = None
+    lines: list[str] = field(default_factory=list)
+    episode_id: str | None = None
+    progress: RunProgress = field(default_factory=lambda: RunProgress())
     activity: str = ""
     error_tail: str = ""
-    server_proc: Optional[subprocess.Popen] = None
+    server_proc: subprocess.Popen | None = None
     server_base: str = ""
     server_model: str = ""
 
@@ -276,13 +276,13 @@ class RunProgress:
         self.stage = "starting"
         self.chapters_total = 0
         # day -> {"sections": n, "done": bool, "tokens": {sec: tokens}, "chars": int}
-        self.days: Dict[int, Dict[str, Any]] = {}
+        self.days: dict[int, dict[str, Any]] = {}
         self.outline_tokens = 0
         self.current_day = 0
         self.current_section = 0
         self.chapter_prompts_done = 0
 
-    def _day(self, day: int) -> Dict[str, Any]:
+    def _day(self, day: int) -> dict[str, Any]:
         return self.days.setdefault(
             day, {"sections": 0, "done": False, "tokens": {}, "chars": 0})
 
@@ -297,7 +297,7 @@ class RunProgress:
         """Estimated finished words: exact-ish for completed days (chars/5),
         token-derived (~tokens*0.8) for in-flight sections."""
         words = 0
-        for day, info in self.days.items():
+        for info in self.days.values():
             if info["done"] and info["chars"]:
                 words += info["chars"] // 5
             else:
@@ -454,12 +454,12 @@ class EpisodeViewerScreen(Screen):
 
     VIEWS = ("story", "prompts", "info")
 
-    def __init__(self, highlight_episode: Optional[str] = None) -> None:
+    def __init__(self, highlight_episode: str | None = None) -> None:
         super().__init__()
         self.highlight_episode = highlight_episode
         self.view_mode = "story"
-        self._cache: Dict[str, Dict[str, Any]] = {}
-        self._current_id: Optional[str] = None
+        self._cache: dict[str, dict[str, Any]] = {}
+        self._current_id: str | None = None
 
     def compose(self) -> ComposeResult:
         with Horizontal(id="viewer-main"):
@@ -495,7 +495,7 @@ class EpisodeViewerScreen(Screen):
             return
         self.app.call_from_thread(self._apply_episodes, episodes)
 
-    def _apply_episodes(self, episodes: List[dict]) -> None:
+    def _apply_episodes(self, episodes: list[dict]) -> None:
         listing = self.query_one("#ep-list", OptionList)
         listing.clear_options()
         if not episodes:
@@ -553,7 +553,7 @@ class EpisodeViewerScreen(Screen):
             f" · [1 story · 2 prompts · 3 info]"
         )
 
-    def _apply_payload(self, episode_id: str, payload: Dict[str, Any]) -> None:
+    def _apply_payload(self, episode_id: str, payload: dict[str, Any]) -> None:
         self._cache[episode_id] = payload
         if self._current_id != episode_id:
             self._current_id = episode_id
@@ -576,10 +576,10 @@ class EpisodeViewerScreen(Screen):
             body.write(self._format_info(payload))
 
     @staticmethod
-    def _format_prompts(prompts: Dict[str, Any]) -> str:
+    def _format_prompts(prompts: dict[str, Any]) -> str:
         if not prompts:
             return "(no prompts.json — generate visual prompts for this episode first)"
-        lines: List[str] = []
+        lines: list[str] = []
         banner = prompts.get("banner") or {}
         if banner.get("prompt"):
             lines.append("════ BANNER PROMPT ════\n")
@@ -603,7 +603,7 @@ class EpisodeViewerScreen(Screen):
         return "\n".join(lines)
 
     @staticmethod
-    def _format_info(payload: Dict[str, Any]) -> str:
+    def _format_info(payload: dict[str, Any]) -> str:
         import json as _json
 
         metadata = payload["metadata"]
@@ -821,20 +821,20 @@ class GravedancerTUI(App):
     def __init__(self) -> None:
         super().__init__()
         self.platform_key = harness_mod.detect_platform()
-        self.harness: Optional[harness_mod.Harness] = None
-        self.selected_model: Optional[str] = None
-        self.remote_models: List[str] = []
-        self.selected_remote_model: Optional[str] = None
-        self.runs: Dict[str, RunRecord] = {}
-        self.run_order: List[str] = []
-        self.active_run_id: Optional[str] = None
+        self.harness: harness_mod.Harness | None = None
+        self.selected_model: str | None = None
+        self.remote_models: list[str] = []
+        self.selected_remote_model: str | None = None
+        self.runs: dict[str, RunRecord] = {}
+        self.run_order: list[str] = []
+        self.active_run_id: str | None = None
         self._run_counter = 0
-        self._last_meter: Dict[str, float] = {}
-        self._stop_requested: Dict[str, bool] = {}
+        self._last_meter: dict[str, float] = {}
+        self._stop_requested: dict[str, bool] = {}
         self._state = _load_tui_state()
         self._state_dirty = False
         self.progress_visible = True
-        self._model_routes: Dict[str, Dict[str, str]] = {}
+        self._model_routes: dict[str, dict[str, str]] = {}
 
     # ── UI / messages ────────────────────────────────────────────────────
 
@@ -930,12 +930,12 @@ class GravedancerTUI(App):
     def _log(self, text: str) -> None:
         self.query_one("#log", RichLog).write(text)
 
-    def _current_base(self) -> Optional[str]:
+    def _current_base(self) -> str | None:
         if self.harness and self.harness.kind == "openai_http":
             return self.query_one("#custom-url", Input).value.strip() or None
         return None
 
-    def _build_target(self) -> Optional[RemoteTarget]:
+    def _build_target(self) -> RemoteTarget | None:
         host = self.query_one("#remote-host", Input).value.strip()
         if not host:
             self._set_status("[red]Enter a remote host / IP first.[/]")
@@ -1038,7 +1038,7 @@ class GravedancerTUI(App):
                 # Merge every known endpoint for this harness (the override
                 # field first), so parallel servers (e.g. e4b + 27B on
                 # different ports) appear as one selectable list.
-                bases: List[str] = []
+                bases: list[str] = []
                 if base:
                     bases.append(base)
                 for candidate in harness.all_bases():
@@ -1049,7 +1049,7 @@ class GravedancerTUI(App):
                         bases.append(extra)
                 entries = harness_mod.discover_models_across_bases(bases)
                 choices = []
-                routes: Dict[str, Dict[str, str]] = {}
+                routes: dict[str, dict[str, str]] = {}
                 multiple = len({e["base"] for e in entries}) > 1
                 served_ids: set = set()
                 for entry in entries:
@@ -1088,7 +1088,7 @@ class GravedancerTUI(App):
             return
         self.call_from_thread(self._apply_model_choices, choices)
 
-    def _apply_model_choices(self, choices: List[str], summary: str = "") -> None:
+    def _apply_model_choices(self, choices: list[str], summary: str = "") -> None:
         model_list = self.query_one("#models", OptionList)
         model_list.clear_options()
         for label in choices:
@@ -1121,7 +1121,7 @@ class GravedancerTUI(App):
         self._health_worker(harness, base)
 
     @work(thread=True, exclusive=True)
-    def _health_worker(self, harness: harness_mod.Harness, base: Optional[str]) -> None:
+    def _health_worker(self, harness: harness_mod.Harness, base: str | None) -> None:
         result = harness_mod.health_check(harness, base)
         models = ", ".join(result.get("models", [])[:8]) or "(none)"
         if result["ok"]:
@@ -1157,7 +1157,7 @@ class GravedancerTUI(App):
         models = remoter_mod.remote_models(target)
         self.call_from_thread(self._apply_remote_info, target, info, models)
 
-    def _apply_remote_info(self, target: RemoteTarget, info: dict, models: List[str]) -> None:
+    def _apply_remote_info(self, target: RemoteTarget, info: dict, models: list[str]) -> None:
         py = info.get("__PY__", "?")
         venv = info.get("__VENV__", "?")
         ollama = info.get("__OLLAMA__", "?")
@@ -1167,7 +1167,7 @@ class GravedancerTUI(App):
         self.selected_remote_model = models[0] if models else None
         self._set_status(
             f"[bold green]✓ {target.host} connected[/]"
-            + (f" · ollama: {ollama}" if "missing" not in str(ollama) else f" · [red]ollama missing[/]")
+            + (f" · ollama: {ollama}" if "missing" not in str(ollama) else " · [red]ollama missing[/]")
             + f" · venv: {venv} · python3: {py}"
         )
 
@@ -1187,7 +1187,7 @@ class GravedancerTUI(App):
             self._apply_deploy_result, target, result, steps, models
         )
 
-    def _apply_deploy_result(self, target: RemoteTarget, result: dict, steps: str, models: List[str]) -> None:
+    def _apply_deploy_result(self, target: RemoteTarget, result: dict, steps: str, models: list[str]) -> None:
         self.remote_models = models
         sel = self.query_one("#remote-models", Select)
         sel.set_options([(m, m) for m in models])
@@ -1211,7 +1211,7 @@ class GravedancerTUI(App):
         self._select_run(record.run_id)
         self.query_one("#stop", Button).disabled = False
 
-    def _run_label(self, record: RunRecord) -> "Text":
+    def _run_label(self, record: RunRecord) -> Text:
         symbol = _STATUS_SYMBOLS.get(record.status, "·")
         label = record.label
         if record.status == "running":
@@ -1285,7 +1285,7 @@ class GravedancerTUI(App):
             self._render_progress_panel()
 
     def _update_runs_header(self) -> None:
-        counts: Dict[str, int] = {}
+        counts: dict[str, int] = {}
         for record in self.runs.values():
             counts[record.status] = counts.get(record.status, 0) + 1
         if not self.runs:
@@ -1396,16 +1396,16 @@ class GravedancerTUI(App):
         tail = "\n".join(record.lines[-6:])
         if record.status == "finished":
             summary = "\n".join(
-                l.strip()
-                for l in record.lines
-                if any(m in l for m in ("TOTAL PIPELINE", "Episode saved:", "Episode ID:"))
+                line.strip()
+                for line in record.lines
+                if any(m in line for m in ("TOTAL PIPELINE", "Episode saved:", "Episode ID:"))
             )
             if event.run_id == self.active_run_id:
-                self._log(f"\n✓ Finished (exit 0)."
+                self._log("\n✓ Finished (exit 0)."
                           + (f"\n{summary}" if summary else ""))
             self._set_status(
                 f"[bold green]Done ✓[/] {record.label}" + (f"\n{summary}" if summary else "")
-                + (f"\n[bold]o[/]: open episode · [bold]v[/]: library" if record.episode_id else "")
+                + ("\n[bold]o[/]: open episode · [bold]v[/]: library" if record.episode_id else "")
             )
         elif record.status == "stopped":
             self._set_status(f"[yellow]Stopped[/] {record.label}")
@@ -1486,7 +1486,7 @@ class GravedancerTUI(App):
         else:
             self._spawn_pipeline(record, spec)
 
-    def _spawn_pipeline(self, record: RunRecord, spec: Dict[str, Any]) -> None:
+    def _spawn_pipeline(self, record: RunRecord, spec: dict[str, Any]) -> None:
         proc = subprocess.Popen(
             spec["command"],
             stdout=subprocess.PIPE,
@@ -1502,7 +1502,7 @@ class GravedancerTUI(App):
         self._stream_worker(record)
 
     @work(thread=True)
-    def _launch_worker(self, record: RunRecord, spec: Dict[str, Any]) -> None:
+    def _launch_worker(self, record: RunRecord, spec: dict[str, Any]) -> None:
         """Ensure the target server is up and serving the model, then launch.
 
         Implements load-on-run for local HTTP servers: when the route's model
@@ -1603,7 +1603,7 @@ class GravedancerTUI(App):
         self._flush_state()
         self.query_one("#log", RichLog).clear()
 
-    def _parse_seed(self) -> Optional[int]:
+    def _parse_seed(self) -> int | None:
         raw = self.query_one("#seed", Input).value.strip()
         try:
             return int(raw)
@@ -1625,7 +1625,7 @@ class GravedancerTUI(App):
         self._set_status(f"Opening [bold cyan]{episode_id}[/] · esc returns")
         self.app.push_screen(EpisodeViewerScreen(highlight_episode=episode_id))
 
-    def _latest_episode_id(self) -> Optional[str]:
+    def _latest_episode_id(self) -> str | None:
         finished = [self.runs[rid] for rid in self.run_order if self.runs[rid].episode_id]
         if finished:
             return finished[-1].episode_id
@@ -1772,7 +1772,7 @@ class GravedancerTUI(App):
             return
         self.push_screen(QuitConfirmScreen(len(active)), self._handle_quit_choice)
 
-    def _handle_quit_choice(self, choice: Optional[str]) -> None:
+    def _handle_quit_choice(self, choice: str | None) -> None:
         if choice == "keep":
             self.exit()
         elif choice == "kill":

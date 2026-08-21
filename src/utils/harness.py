@@ -28,7 +28,6 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional
 
 from src.utils.models import format_model_label, list_local_mlx_models
 
@@ -83,15 +82,15 @@ class Harness:
     id: str
     name: str
     kind: str
-    default_base: Optional[str]
+    default_base: str | None
     platforms: frozenset
     note: str = ""
     env_url_override: str = ""
     extra_bases: tuple = ()
 
-    def all_bases(self) -> List[str]:
+    def all_bases(self) -> list[str]:
         """Default plus extra endpoints, defaults first."""
-        bases: List[str] = []
+        bases: list[str] = []
         if self.default_base:
             bases.append(self.default_base)
         for extra in self.extra_bases:
@@ -109,11 +108,11 @@ class Harness:
             return self.default_base.rstrip("/")
         return ""
 
-    def on_platform(self, platform_key: Optional[str] = None) -> bool:
+    def on_platform(self, platform_key: str | None = None) -> bool:
         return (platform_key or detect_platform()) in self.platforms
 
 
-HARNESSES: List[Harness] = [
+HARNESSES: list[Harness] = [
     Harness(
         id="rapid-mlx",
         name="rapid-mlx",
@@ -170,7 +169,7 @@ HARNESSES: List[Harness] = [
 ]
 
 
-def available_harnesses() -> List[Harness]:
+def available_harnesses() -> list[Harness]:
     """Return harnesses usable on the current platform."""
     return [h for h in HARNESSES if h.on_platform()]
 
@@ -185,27 +184,27 @@ def _http_get_json(url: str, timeout: float = _TIMEOUT):
         return json.loads(response.read().decode("utf-8", "replace"))
 
 
-def resolve_base(harness: Harness, base: Optional[str] = None) -> str:
+def resolve_base(harness: Harness, base: str | None = None) -> str:
     """Resolve an explicit base URL, falling back to the harness default."""
     if base and base.strip():
         return base.strip().rstrip("/")
     return harness.base_url()
 
 
-def list_served_models(harness: Harness, base: Optional[str] = None) -> List[str]:
+def list_served_models(harness: Harness, base: str | None = None) -> list[str]:
     """List model ids served by an HTTP harness via ``GET /v1/models``."""
     if harness.kind != "openai_http":
         raise ValueError(f"{harness.id} is not an HTTP harness")
     root = resolve_base(harness, base)
     payload = _http_get_json(f"{root}/v1/models")
-    ids: List[str] = []
+    ids: list[str] = []
     for item in payload.get("data", []):
         if isinstance(item, dict) and item.get("id"):
             ids.append(str(item["id"]))
     return sorted(set(ids))
 
 
-def health_check(harness: Harness, base: Optional[str] = None) -> Dict[str, object]:
+def health_check(harness: Harness, base: str | None = None) -> dict[str, object]:
     """Probe ``/v1/models`` and report whether the harness is reachable."""
     if harness.kind == "opencode_cli":
         return opencode_health()
@@ -225,9 +224,9 @@ _MODEL_ROOTS = (
 )
 
 
-def list_local_model_dirs() -> List[str]:
+def list_local_model_dirs() -> list[str]:
     """Scan repo-local and home model directories for loadable MLX checkpoints."""
-    found: List[str] = []
+    found: list[str] = []
     for root in _MODEL_ROOTS:
         if not root.is_dir():
             continue
@@ -241,20 +240,20 @@ def list_local_model_dirs() -> List[str]:
     return sorted(found)
 
 
-def list_native_mlx_models() -> List[str]:
+def list_native_mlx_models() -> list[str]:
     """Return model ids usable by native in-process MLX on macOS.
 
     Merges the Hugging Face cache scan (``models.py``) with repo-local and
     ``~/.models`` directories, deduplicated by repo id.
     """
-    ids: List[str] = []
+    ids: list[str] = []
     try:
         ids.extend(repo for _label, repo in list_local_mlx_models())
     except Exception:
         pass
     ids.extend(list_local_model_dirs())
     seen: set[str] = set()
-    unique: List[str] = []
+    unique: list[str] = []
     for model_id in ids:
         if model_id not in seen:
             seen.add(model_id)
@@ -262,7 +261,7 @@ def list_native_mlx_models() -> List[str]:
     return unique
 
 
-def list_opencode_models() -> List[str]:
+def list_opencode_models() -> list[str]:
     """List model ids the ``opencode`` CLI can serve (``opencode models``)."""
     try:
         proc = subprocess.run(
@@ -278,7 +277,7 @@ def list_opencode_models() -> List[str]:
     return sorted(set(ids))
 
 
-def list_opencode_model_choices() -> List[str]:
+def list_opencode_model_choices() -> list[str]:
     """Curated OpenCode choices: ox-alpha preset, free tier, then everything else."""
     models = list_opencode_models()
     free = [m for m in models if m.endswith("-free")]
@@ -289,7 +288,7 @@ def list_opencode_model_choices() -> List[str]:
     return choices
 
 
-def opencode_health() -> Dict[str, object]:
+def opencode_health() -> dict[str, object]:
     """Check the opencode binary and report its served models."""
     binary = shutil.which(OPENCODE_BIN)
     if not binary:
@@ -304,7 +303,7 @@ def opencode_health() -> Dict[str, object]:
     return {"ok": True, "available": True, "models": models, "base": binary, "error": ""}
 
 
-def list_model_choices(harness: Harness, base: Optional[str] = None) -> List[str]:
+def list_model_choices(harness: Harness, base: str | None = None) -> list[str]:
     """Return display labels for every selectable model on a harness."""
     if harness.kind == "mlx_native":
         models = list_native_mlx_models()
@@ -314,23 +313,23 @@ def list_model_choices(harness: Harness, base: Optional[str] = None) -> List[str
     return list_served_models(harness, base)
 
 
-def list_served_models_at(base: str) -> List[str]:
+def list_served_models_at(base: str) -> list[str]:
     """List model ids served at one OpenAI-compatible base URL (no harness needed)."""
     payload = _http_get_json(f"{base.rstrip('/')}/v1/models")
-    ids: List[str] = []
+    ids: list[str] = []
     for item in payload.get("data", []):
         if isinstance(item, dict) and item.get("id"):
             ids.append(str(item["id"]))
     return sorted(set(ids))
 
 
-def discover_models_across_bases(bases: List[str]) -> List[Dict[str, str]]:
+def discover_models_across_bases(bases: list[str]) -> list[dict[str, str]]:
     """Probe several base URLs and return [{base, id}] for every reachable one.
 
     Unreachable endpoints are skipped silently so a stopped server never
     breaks discovery of the others.
     """
-    found: List[Dict[str, str]] = []
+    found: list[dict[str, str]] = []
     seen: set = set()
     for base in bases:
         root = (base or "").strip().rstrip("/")
@@ -358,9 +357,9 @@ def pipeline_model_ref(harness: Harness, model_id: str) -> str:
     return model_id
 
 
-def pipeline_environment(harness: Harness, base: Optional[str] = None) -> Dict[str, str]:
+def pipeline_environment(harness: Harness, base: str | None = None) -> dict[str, str]:
     """Return the environment variables needed to route the pipeline to a harness."""
-    env: Dict[str, str] = {}
+    env: dict[str, str] = {}
     if harness.kind == "openai_http":
         root = resolve_base(harness, base)
         if root:

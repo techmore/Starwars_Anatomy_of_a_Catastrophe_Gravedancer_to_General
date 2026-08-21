@@ -6,9 +6,9 @@ tests, and the generation pipeline.
 
 from __future__ import annotations
 
-import re
 import os
-from typing import Dict, List, Any
+import re
+from typing import Any
 
 
 def _daily_target_tokens() -> int:
@@ -128,8 +128,8 @@ def build_story_pacing_block() -> str:
 
 
 # Validation helpers
-def validate_concept_dict(concept: Dict[str, Any]) -> List[str]:
-    errors: List[str] = []
+def validate_concept_dict(concept: dict[str, Any]) -> list[str]:
+    errors: list[str] = []
 
     if not concept.get("title"):
         errors.append("title is required")
@@ -162,10 +162,10 @@ def validate_story_prompt_inputs(
     title: str,
     num_days: int,
     setting: str,
-    jedi_details: Dict[str, Any],
-    tone_focus: List[str],
-) -> List[str]:
-    errors: List[str] = []
+    jedi_details: dict[str, Any],
+    tone_focus: list[str],
+) -> list[str]:
+    errors: list[str] = []
 
     if not str(title or "").strip():
         errors.append("title is required")
@@ -184,8 +184,8 @@ def validate_story_prompt_inputs(
     return errors
 
 
-def validate_outline_structure(outline: str, expected_days: int) -> List[str]:
-    errors: List[str] = []
+def validate_outline_structure(outline: str, expected_days: int) -> list[str]:
+    errors: list[str] = []
     text = str(outline or "").strip()
 
     if not text:
@@ -251,16 +251,16 @@ def validate_outline_structure(outline: str, expected_days: int) -> List[str]:
     return errors
 
 
-def validate_outline_quality(outline: str, expected_days: int) -> List[str]:
+def validate_outline_quality(outline: str, expected_days: int) -> list[str]:
     """Reject structurally valid outlines that would predictably produce loops."""
-    errors: List[str] = []
+    errors: list[str] = []
     text = str(outline or "").strip()
     day_blocks = re.findall(
         r"(## DAY (\d+):.*?)(?=## DAY \d+:|$)",
         text,
         re.DOTALL | re.IGNORECASE,
     )
-    beats: List[str] = []
+    beats: list[str] = []
     for block, _day_num in day_blocks[:expected_days]:
         for match in re.finditer(r"\bBeat\s+\d+:\s*(.+)", block, re.IGNORECASE):
             normalized = re.sub(r"[^a-z0-9]+", " ", match.group(1).lower()).strip()

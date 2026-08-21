@@ -57,7 +57,11 @@ class TestOutlineRetry(unittest.TestCase):
 
     def test_persistent_truncation_exhausts_attempts(self):
         calls = []
-        gen = lambda: calls.append(0) or _truncated_outline(3, 2)
+
+        def gen():
+            calls.append(0)
+            return _truncated_outline(3, 2)
+
         outline, errors = _retry_outline(gen, 3, 3)
         self.assertEqual(len(calls), 3)
         self.assertTrue(errors)

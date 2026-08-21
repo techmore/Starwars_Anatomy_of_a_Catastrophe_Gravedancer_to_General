@@ -1,7 +1,7 @@
 """MLX text generation client for local Apple Silicon inference."""
 
-import importlib.util
 import gc
+import importlib.util
 import json
 import os
 import re
@@ -9,14 +9,13 @@ import subprocess
 import sys
 import threading
 import time
-import urllib.request
 import urllib.error
+import urllib.request
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable, List, Optional
 
 from src.utils.logging_utils import get_logger
 from src.utils.models import DEFAULT_MODEL, list_local_mlx_models, normalize_model_name
-
 
 LOGGER = get_logger(__name__)
 
@@ -154,7 +153,7 @@ def _strip_think_blocks(text: str) -> str:
     return "".join(parts)
 
 
-def _apply_chat_template(tokenizer, prompt: str, system: Optional[str] = None) -> str:
+def _apply_chat_template(tokenizer, prompt: str, system: str | None = None) -> str:
     """Format a prompt using the model's chat template.
 
     This is critical for chat models (Qwen, Llama, etc.) — without it,
@@ -189,7 +188,7 @@ def _apply_chat_template(tokenizer, prompt: str, system: Optional[str] = None) -
         return prompt
 
 
-def _redact_command_arguments(command: List[str]) -> str:
+def _redact_command_arguments(command: list[str]) -> str:
     """Render a subprocess command without logging user/story prompt text."""
     sensitive_flags = {"--prompt", "--system"}
     rendered = []
@@ -210,7 +209,7 @@ def _bonsai_runtime_python() -> Path:
     return Path(os.environ.get("GRAVEDANCER_BONSAI_PYTHON", BONSAI_RUNTIME_DEFAULT)).expanduser()
 
 
-def _urlopen_with_retries(request: urllib.request.Request, attempts: int = 3, timeout: Optional[float] = None):
+def _urlopen_with_retries(request: urllib.request.Request, attempts: int = 3, timeout: float | None = None):
     """Open a URL with bounded connect-retries.
 
     Retries transient connection failures (refused/reset/timeout) with
@@ -236,8 +235,8 @@ class MLXClient:
         # Track the model whose objects are currently resident in the MLX
         # cache.  Explicit cleanup is important on Apple Silicon where weights
         # share unified memory.
-        self._active_model: Optional[str] = None
-        self._loaded_model: Optional[tuple] = None
+        self._active_model: str | None = None
+        self._loaded_model: tuple | None = None
 
     def _has_python_api(self) -> bool:
         return importlib.util.find_spec("mlx_lm") is not None
@@ -301,13 +300,13 @@ class MLXClient:
         threading.Thread(target=_watchdog, daemon=True).start()
         # Drain stderr concurrently so a chatty child can never fill the pipe
         # and deadlock the stdout loop.
-        stderr_chunks: List[str] = []
+        stderr_chunks: list[str] = []
         stderr_thread = threading.Thread(
             target=lambda: stderr_chunks.append(proc.stderr.read() if proc.stderr else ""),
             daemon=True,
         )
         stderr_thread.start()
-        error_events: List[str] = []
+        error_events: list[str] = []
         try:
             for line in proc.stdout:
                 watch["last"] = time.monotonic()
@@ -372,7 +371,7 @@ class MLXClient:
         except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, OSError) as exc:
             return {"available": False, "model_loaded": False, "models": [], "error": str(exc)}
 
-    def _generate_lmstudio(self, model: str, prompt: str, system: Optional[str],
+    def _generate_lmstudio(self, model: str, prompt: str, system: str | None,
                            temperature: float, top_p: float, max_tokens: int) -> str:
         """Call an OpenAI-compatible local LM Studio server."""
         messages = []
@@ -409,7 +408,7 @@ class MLXClient:
         return _strip_think_blocks(content).strip()
 
     def _generate_lmstudio_stream(
-        self, model: str, prompt: str, system: Optional[str],
+        self, model: str, prompt: str, system: str | None,
         temperature: float, top_p: float, max_tokens: int,
     ) -> Iterable[str]:
         """Yield OpenAI-compatible LM Studio SSE deltas as they arrive."""
@@ -541,11 +540,11 @@ class MLXClient:
     def _mlx_command(
         self,
         prompt: str,
-        system: Optional[str] = None,
+        system: str | None = None,
         max_tokens: int = 4096,
         temperature: float = 0.7,
-        model: Optional[str] = None,
-    ) -> List[str]:
+        model: str | None = None,
+    ) -> list[str]:
         cmd = [
             sys.executable,
             "-m",
@@ -563,20 +562,20 @@ class MLXClient:
             cmd.extend(["--system", system])
         return cmd
 
-    def list_models(self) -> List[str]:
+    def list_models(self) -> list[str]:
         return [self.model]
 
     def check_connection(self) -> bool:
         return self._has_python_api()
 
-    def is_model_available_locally(self, model: Optional[str] = None) -> bool:
+    def is_model_available_locally(self, model: str | None = None) -> bool:
         """Check a local path or Hugging Face cache without loading the model."""
         normalized = normalize_model_name(model or self.model)
         if Path(normalized).expanduser().is_dir():
             return True
         return normalized in {repo_id for _, repo_id in list_local_mlx_models()}
 
-    def is_model_supported_by_runtime(self, model: Optional[str] = None) -> bool:
+    def is_model_supported_by_runtime(self, model: str | None = None) -> bool:
         """Return whether the active MLX runtime can execute a model's weights.
 
         Bonsai 27B's published MLX package uses 1-bit quantization.  Mainline
@@ -617,7 +616,7 @@ class MLXClient:
         except OSError as exc:
             LOGGER.warning("Unable to reap stream child pid=%s error=%s", proc.pid, exc)
 
-    def _bonsai_command(self) -> List[str]:
+    def _bonsai_command(self) -> list[str]:
         runtime = _bonsai_runtime_python()
         if not runtime.is_file():
             raise RuntimeError(
@@ -627,7 +626,7 @@ class MLXClient:
         return [str(runtime), "-u", str(BONSAI_RUNNER)]
 
     def _generate_bonsai_stream(
-        self, model: str, prompt: str, system: Optional[str], temperature: float,
+        self, model: str, prompt: str, system: str | None, temperature: float,
         top_p: float, max_tokens: int,
     ) -> Iterable[str]:
         command = self._bonsai_command()
@@ -652,7 +651,7 @@ class MLXClient:
         assert process.stdout is not None
         # Drain stderr concurrently so a chatty runtime can never fill the
         # pipe and deadlock the stdout loop.
-        stderr_chunks: List[str] = []
+        stderr_chunks: list[str] = []
         stderr_thread = threading.Thread(
             target=lambda: stderr_chunks.append(process.stderr.read() if process.stderr else ""),
             daemon=True,
@@ -681,7 +680,7 @@ class MLXClient:
         self,
         model: str,
         prompt: str,
-        system: Optional[str] = None,
+        system: str | None = None,
         temperature: float = 0.7,
         top_p: float = 0.9,
         max_tokens: int = 4096,
@@ -739,7 +738,7 @@ class MLXClient:
         self,
         model: str,
         prompt: str,
-        system: Optional[str] = None,
+        system: str | None = None,
         temperature: float = 0.7,
         top_p: float = 0.9,
         max_tokens: int = 4096,

@@ -17,7 +17,6 @@ if str(PROJECT_ROOT) not in sys.path:
 from src.utils.mlx_client import MLXClient
 from src.utils.settings import SETTINGS
 
-
 DEFAULT_PROMPT = (
     "Write a 250-word atmospheric opening scene for a science-fiction pursuit. "
     "Output prose only, with no headings, analysis, or explanation."

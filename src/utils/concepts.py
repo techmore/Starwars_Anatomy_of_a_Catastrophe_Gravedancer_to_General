@@ -7,9 +7,9 @@ fields in **bold**, which leaks into metadata and double-formats on render).
 
 import json
 import re
-from typing import Dict, Any, List, Tuple
-from src.utils.prompt_schema import validate_concept_dict
-from src.utils.prompt_schema import TARGET_WORDS_PER_DAY
+from typing import Any
+
+from src.utils.prompt_schema import TARGET_WORDS_PER_DAY, validate_concept_dict
 
 # Canonical tone options — shared between the manual multiselect and the
 # concept parser's whitelist. Keep in sync with the Story tab.
@@ -75,7 +75,7 @@ def _strip_context_reasoning(text: str) -> str:
     return "\n\n".join(paragraphs[prose_start:]).strip()
 
 
-def get_used_jedi_names(episodes: List[Dict[str, Any]]) -> List[str]:
+def get_used_jedi_names(episodes: list[dict[str, Any]]) -> list[str]:
     """Collect Jedi names already used across the library (for dedup)."""
     names = []
     for ep in episodes:
@@ -95,7 +95,7 @@ def _strip_markdown(value: str) -> str:
     return value.strip()
 
 
-def build_concept_context_prompt(used_names: List[str], series_context: str = "") -> str:
+def build_concept_context_prompt(used_names: list[str], series_context: str = "") -> str:
     """Build a free-form concept generation prompt (creative context pass).
 
     The LLM should write a vivid, natural-language episode concept with no
@@ -168,9 +168,9 @@ RULES:
 
 def build_missing_fields_repair_prompt(
     context_text: str,
-    extracted_so_far: Dict[str, Any],
-    missing_fields: List[str],
-    used_names: List[str] | None = None,
+    extracted_so_far: dict[str, Any],
+    missing_fields: list[str],
+    used_names: list[str] | None = None,
 ) -> str:
     """Build a focused prompt that fills in only the missing concept fields.
 
@@ -217,7 +217,7 @@ _RANK_WS = (
 """Known Jedi ranks used in prose-extraction fallback."""
 
 
-def _extract_from_prose(concept: Dict[str, Any], prose: str, _raw_response: str = "") -> None:
+def _extract_from_prose(concept: dict[str, Any], prose: str, _raw_response: str = "") -> None:
     """Second-chance extraction of missing concept fields from creative prose.
 
     *prose* is the free-form context response (2-4 paragraphs of vivid
@@ -226,7 +226,7 @@ def _extract_from_prose(concept: Dict[str, Any], prose: str, _raw_response: str 
     """
     # --- tone: match VALID_TONES case-insensitively in prose (first pass) ---
     if not concept.get("tone"):
-        found: List[str] = []
+        found: list[str] = []
         prose_lower = prose.lower()
         for t in VALID_TONES:
             if t.lower() in prose_lower:
@@ -267,8 +267,8 @@ def _extract_from_prose(concept: Dict[str, Any], prose: str, _raw_response: str 
             # Strip out known patterns to leave descriptive content
             for pat in [
                 rf"(?i){jn}[,\s]*(?:a|an|the|—)?\s*",
-                rf"(?i)(?:a|an|the)\s+\w+\s+Jedi\s+\w+\s+who\s+",
-                rf"(?i)(?:a|an|the)\s+\w+\s+Jedi\s+",
+                r"(?i)(?:a|an|the)\s+\w+\s+Jedi\s+\w+\s+who\s+",
+                r"(?i)(?:a|an|the)\s+\w+\s+Jedi\s+",
                 "Jedi ",
                 r"\b(?:wields|wielding|carries|carrying|uses|using)\s+\w+\s+(?:lightsaber|blade|saber)",
                 rf"(?i){jn}",
@@ -317,7 +317,7 @@ def _extract_from_prose(concept: Dict[str, Any], prose: str, _raw_response: str 
             concept["title"] = _strip_markdown(m.group(1).strip())
 
 
-def _try_close_truncated_json(text: str) -> Dict[str, Any] | None:
+def _try_close_truncated_json(text: str) -> dict[str, Any] | None:
     """Attempt to parse truncated JSON by closing open brackets/braces.
 
     When the LLM runs out of tokens mid-JSON, the output is cut off with
@@ -329,9 +329,8 @@ def _try_close_truncated_json(text: str) -> Dict[str, Any] | None:
     # Strategy 1: Cut back to last complete value (after a closing quote
     # followed by comma, or after a complete bracket/brace), then close.
     for cut_pattern in [r'",', r'"', r'\]', r'\}', r'\d', r'true|false|null']:
-        m = None
-        for m in re.finditer(cut_pattern, text):
-            pass  # find last match
+        matches = list(re.finditer(cut_pattern, text))
+        m = matches[-1] if matches else None
         if m:
             candidate = text[: m.end()]
             # Remove trailing comma if present
@@ -373,14 +372,14 @@ def _extract_tone_from_truncated(response: str) -> list[str]:
     return [t for t in tones if t in VALID_TONES] or tones
 
 
-def try_parse_full_episode_concept(response: str, fallback_text: str = "") -> Tuple[Dict[str, Any], List[str]]:
+def try_parse_full_episode_concept(response: str, fallback_text: str = "") -> tuple[dict[str, Any], list[str]]:
     """Parse LLM response into an episode concept dict.
 
     Same as :func:`parse_full_episode_concept` but **does not raise** on
     validation errors — returns ``(concept, errors)`` instead so callers can
     inspect which fields are missing and attempt a repair pass.
     """
-    concept: Dict[str, Any] = {
+    concept: dict[str, Any] = {
         "title": "",
         "days": 5,
         "setting": "",

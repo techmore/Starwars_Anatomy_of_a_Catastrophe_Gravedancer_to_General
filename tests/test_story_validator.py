@@ -1,7 +1,7 @@
 import unittest
 
-from src.utils.story_validator import deduplicate_story, strip_saved_episode_header, validate_story
 from src.utils.prompt_schema import TARGET_WORDS_PER_DAY
+from src.utils.story_validator import deduplicate_story, strip_saved_episode_header, validate_story
 
 
 class TestStoryValidator(unittest.TestCase):

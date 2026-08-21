@@ -10,7 +10,6 @@ from uuid import uuid4
 
 from src.utils.settings import PROJECT_ROOT, SETTINGS
 
-
 REPO_ROOT = PROJECT_ROOT
 LOG_DIR = SETTINGS.log_path
 LOG_PATH = LOG_DIR.parent / "log.txt"

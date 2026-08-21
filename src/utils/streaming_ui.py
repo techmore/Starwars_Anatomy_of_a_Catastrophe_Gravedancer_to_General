@@ -1,7 +1,6 @@
 """Helpers for routing streamed generation text into UI panels."""
 
 import time
-from typing import Dict, List
 
 from src.utils._streamlit_fallback import st
 
@@ -20,7 +19,7 @@ def _friendly_stage_name(stage: str) -> str:
     return stage.title()
 
 
-def reset_stream_panels(widgets: Dict[str, object], progress_state: Dict[str, object] | None = None) -> None:
+def reset_stream_panels(widgets: dict[str, object], progress_state: dict[str, object] | None = None) -> None:
     """Clear live stream panels and state before a new generation run starts."""
     for key in STREAM_PANEL_KEYS:
         widget = widgets.get(key)
@@ -31,7 +30,7 @@ def reset_stream_panels(widgets: Dict[str, object], progress_state: Dict[str, ob
         progress_state.update(build_progress_state())
 
 
-def build_progress_state() -> Dict[str, object]:
+def build_progress_state() -> dict[str, object]:
     """Create the canonical initial progress-state payload."""
     return {
         "events": [],
@@ -43,7 +42,7 @@ def build_progress_state() -> Dict[str, object]:
     }
 
 
-def build_stream_runtime(streamlit_module=None) -> Dict[str, object]:
+def build_stream_runtime(streamlit_module=None) -> dict[str, object]:
     """Create both the live-monitor widgets and the matching initial state."""
     module = streamlit_module or st
     if module is None:
@@ -54,7 +53,7 @@ def build_stream_runtime(streamlit_module=None) -> Dict[str, object]:
     }
 
 
-def render_cached_outline_banner(widgets: Dict[str, object], outline: str) -> None:
+def render_cached_outline_banner(widgets: dict[str, object], outline: str) -> None:
     """Render the resume banner for a cached outline."""
     stage_line, progress_line = _build_cached_outline_lines()
     stage_label = widgets.get("stage_label")
@@ -76,7 +75,7 @@ def _build_cached_outline_lines() -> tuple[str, str]:
     )
 
 
-def _build_progress_log_lines(progress_state: Dict[str, object], extra_line: str | None = None) -> List[str]:
+def _build_progress_log_lines(progress_state: dict[str, object], extra_line: str | None = None) -> list[str]:
     """Build the text shown in the progress panel."""
     events = progress_state.get("events", [])
     current_stage = progress_state.get("current_stage", "Idle")
@@ -108,7 +107,7 @@ def _build_stage_line(stage: str, message: str) -> str:
     return f"**Current Phase:** {stage} - {message}"
 
 
-def render_stream_update(stage: str, message: str, text: str, widgets: Dict[str, object], progress_state: Dict[str, object]) -> None:
+def render_stream_update(stage: str, message: str, text: str, widgets: dict[str, object], progress_state: dict[str, object]) -> None:
     """Route streamed generation updates into the live UI panels."""
     friendly = _friendly_stage_name(stage)
     events = progress_state.setdefault("events", [])
@@ -143,8 +142,8 @@ def render_stream_update(stage: str, message: str, text: str, widgets: Dict[str,
 
 
 def finalize_stream_state(
-    widgets: Dict[str, object],
-    progress_state: Dict[str, object],
+    widgets: dict[str, object],
+    progress_state: dict[str, object],
     message: str = "Generation complete.",
     character_count: int | None = None,
 ) -> None:

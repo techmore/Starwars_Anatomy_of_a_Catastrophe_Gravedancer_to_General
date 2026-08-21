@@ -3,7 +3,6 @@
 from collections.abc import Callable, Iterable
 from typing import Any, Protocol
 
-
 ProgressCallback = Callable[[str, str, str], None]
 
 

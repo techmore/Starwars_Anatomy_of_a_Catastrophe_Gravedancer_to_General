@@ -14,23 +14,29 @@ import sys
 import time
 import uuid
 from datetime import datetime
-from typing import Dict, Any, Optional
+from typing import Any
 
 from src.utils.creative_tables import generate_creative_seed
 from src.utils.logging_utils import get_logger
 from src.utils.mlx_client import MLXClient
-from src.utils.story_generator import GenerationCancelled, StoryGenerator
-from src.utils.storage import EpisodeStorage
 from src.utils.prompt_generator import PromptGenerator
 from src.utils.prompt_schema import TARGET_WORDS_PER_DAY
-from src.utils.settings import SETTINGS, stage_model
 from src.utils.series_bible import (
     build_entry_prompt,
     format_for_prompt,
+)
+from src.utils.series_bible import (
     load_entries as load_bible_entries,
+)
+from src.utils.series_bible import (
     parse_entry as parse_bible_entry,
+)
+from src.utils.series_bible import (
     update_entry as update_bible_entry,
 )
+from src.utils.settings import SETTINGS, stage_model
+from src.utils.storage import EpisodeStorage
+from src.utils.story_generator import GenerationCancelled, StoryGenerator
 
 try:
     from rich.console import Console
@@ -48,7 +54,7 @@ LOGGER = get_logger(__name__)
 DEFAULT_SEED_VALUE = 42
 
 
-def _map_seed_to_metadata(seed: Dict[str, Any]) -> Dict[str, Any]:
+def _map_seed_to_metadata(seed: dict[str, Any]) -> dict[str, Any]:
     """Map a creative seed dict to the metadata format expected by the pipeline."""
     return {
         "title": seed["title"],
@@ -84,7 +90,7 @@ def _install_cancel_handler() -> None:
     signal.signal(signal.SIGTERM, _handler)
 
 
-def _find_checkpoint(storage: EpisodeStorage, title: str) -> Optional[Dict[str, Any]]:
+def _find_checkpoint(storage: EpisodeStorage, title: str) -> dict[str, Any] | None:
     """Return the newest resumable checkpoint payload for *title*, if any."""
     for entry in storage.list_checkpoints():
         if entry.get("title") == title:
@@ -96,16 +102,16 @@ def _find_checkpoint(storage: EpisodeStorage, title: str) -> Optional[Dict[str, 
 
 def main(
     seed_value: int = DEFAULT_SEED_VALUE,
-    model: Optional[str] = None,
-    outline_model: Optional[str] = None,
-    story_model: Optional[str] = None,
-    recap_model: Optional[str] = None,
-    visual_model: Optional[str] = None,
+    model: str | None = None,
+    outline_model: str | None = None,
+    story_model: str | None = None,
+    recap_model: str | None = None,
+    visual_model: str | None = None,
 ):
     _install_cancel_handler()
     console = Console() if RICH_AVAILABLE else None
     pipeline_start = time.perf_counter()
-    stage_times: Dict[str, float] = {}
+    stage_times: dict[str, float] = {}
 
     def stage_complete(name: str, started: float) -> None:
         elapsed = time.perf_counter() - started
@@ -164,8 +170,8 @@ def main(
     # ── Resume support: reuse a checkpoint from a previous interrupted run ─
     checkpoint_scope = f"cli:{seed_value}:{uuid.uuid4().hex[:8]}"
     resumed = _find_checkpoint(storage, seed["title"])
-    day_drafts: Dict[int, str] = {}
-    day_recaps: Dict[int, str] = {}
+    day_drafts: dict[int, str] = {}
+    day_recaps: dict[int, str] = {}
     draft_only = False
     if resumed and (resumed.get("metadata") or {}).get("num_days") in (None, seed["num_days"]):
         drafts = resumed.get("day_drafts") or {}
@@ -254,7 +260,7 @@ def main(
 
     # ── 4. Generate story (multi-pass: day-by-day, section-by-section) ──
     print(f"\n{'='*72}")
-    print(f"  PHASE 2: STORY GENERATION")
+    print("  PHASE 2: STORY GENERATION")
     print(f"{'='*72}\n")
     story_start = time.perf_counter()
 
@@ -331,7 +337,7 @@ def main(
 
     # ── 5. Extract chapters ──────────────────────────────────────────────
     print(f"\n{'='*72}")
-    print(f"  PHASE 3: EXTRACTING CHAPTERS FROM STORY")
+    print("  PHASE 3: EXTRACTING CHAPTERS FROM STORY")
     print(f"{'='*72}\n")
     extraction_start = time.perf_counter()
     chapters = prompt_gen.extract_chapters(story)
@@ -340,7 +346,7 @@ def main(
 
     # ── 6. Generate banner prompt ────────────────────────────────────────
     print(f"\n{'='*72}")
-    print(f"  PHASE 4: BANNER PROMPT")
+    print("  PHASE 4: BANNER PROMPT")
     print(f"{'='*72}\n")
     banner_start = time.perf_counter()
 
@@ -399,7 +405,7 @@ def main(
 
     # ── 9. Save episode ──────────────────────────────────────────────────
     print(f"\n{'='*72}")
-    print(f"  PHASE 6: SAVING EPISODE")
+    print("  PHASE 6: SAVING EPISODE")
     print(f"{'='*72}\n")
 
     save_start = time.perf_counter()
@@ -449,7 +455,7 @@ def main(
     ratio = total_words / max(total_target, 1)
 
     print(f"\n{'='*72}")
-    print(f"  PIPELINE COMPLETE — SUMMARY")
+    print("  PIPELINE COMPLETE — SUMMARY")
     print(f"{'='*72}")
     print(f"  Title:         {seed['title']}")
     print(f"  Seed value:    {seed['seed']}")
@@ -476,7 +482,7 @@ def main(
         table.add_row("TOTAL PIPELINE", f"{total_elapsed:.1f}", f"{total_elapsed / 60:.1f}", style="bold green")
         console.print(table)
     else:
-        print(f"\n  STAGE RUNTIME")
+        print("\n  STAGE RUNTIME")
         print(f"  {'Stage':<24} {'Seconds':>10} {'Minutes':>10}")
         print(f"  {'-' * 46}")
         for stage_name, elapsed in stage_times.items():

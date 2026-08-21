@@ -4,14 +4,42 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from src.utils.prompt_generator import PromptGenerator
-from src.utils.storage import EpisodeStorage
-from src.utils.streaming_ui import STREAM_PANEL_KEYS, build_progress_state, build_stream_runtime, finalize_stream_state, render_cached_outline_banner, render_stream_update, reset_stream_panels
+from scripts.run_spec_pilot import (
+    PILOT_JEDI_FALLBACK,
+    _complete_visual_variants,
+    _dedupe_concept_text,
+)
 from src.utils import story_generator as story_generator_module
-from src.utils.story_generator import OUTLINE_MAX_TOKENS, SECTION_MAX_TOKENS, GenerationCancelled, StoryGenerator, outline_token_budget
-from src.utils.concepts import build_concept_context_prompt, build_concept_extraction_prompt, try_parse_full_episode_concept
-from src.utils.prompt_schema import STORY_MULTI_PASS_RULES, STORY_STRUCTURE_REQUIREMENTS, validate_outline_quality, validate_outline_structure, validate_story_prompt_inputs
-from scripts.run_spec_pilot import PILOT_JEDI_FALLBACK, _complete_visual_variants, _dedupe_concept_text
+from src.utils.concepts import (
+    build_concept_context_prompt,
+    build_concept_extraction_prompt,
+    try_parse_full_episode_concept,
+)
+from src.utils.prompt_generator import PromptGenerator
+from src.utils.prompt_schema import (
+    STORY_MULTI_PASS_RULES,
+    STORY_STRUCTURE_REQUIREMENTS,
+    validate_outline_quality,
+    validate_outline_structure,
+    validate_story_prompt_inputs,
+)
+from src.utils.storage import EpisodeStorage
+from src.utils.story_generator import (
+    OUTLINE_MAX_TOKENS,
+    SECTION_MAX_TOKENS,
+    GenerationCancelled,
+    StoryGenerator,
+    outline_token_budget,
+)
+from src.utils.streaming_ui import (
+    STREAM_PANEL_KEYS,
+    build_progress_state,
+    build_stream_runtime,
+    finalize_stream_state,
+    render_cached_outline_banner,
+    render_stream_update,
+    reset_stream_panels,
+)
 
 
 class TestWorkflowSmoke(unittest.TestCase):
@@ -57,6 +85,23 @@ class TestWorkflowSmoke(unittest.TestCase):
         text = "One paragraph.\n\nOne paragraph.\n\nA distinct paragraph."
         self.assertEqual(_dedupe_concept_text(text), "One paragraph.\n\nA distinct paragraph.")
         self.assertEqual(PILOT_JEDI_FALLBACK["name"], "Sura Venn")
+
+    def test_seed_generation_excludes_used_jedi_names(self):
+        from src.utils.creative_tables import generate_creative_seed
+
+        first = generate_creative_seed(seed=7)
+        rerolled = generate_creative_seed(used_jedi_names=[first["jedi_name"]], seed=7)
+
+        self.assertNotEqual(rerolled["jedi_name"], first["jedi_name"])
+
+    def test_seed_generation_is_deterministic_without_exclusions(self):
+        from src.utils.creative_tables import generate_creative_seed
+
+        a = generate_creative_seed(seed=7)
+        b = generate_creative_seed(seed=7)
+
+        self.assertEqual(a["jedi_name"], b["jedi_name"])
+        self.assertEqual(a["jedi_species"], b["jedi_species"])
 
     def test_visual_prompt_recovery_fills_missing_variants(self):
         visual, recovered = _complete_visual_variants(

@@ -7,20 +7,19 @@ Ports the working per-day prompt generation and layers on:
 
 import streamlit as st
 
-from src.components.ui import copy_button, aspect_to_dims
+from src.components.ui import aspect_to_dims, copy_button
 from src.prompts.system_prompts import NEGATIVE_PROMPT_DEFAULT
+from src.utils.logging_utils import start_new_run_log
 from src.utils.session_state import (
     get_episode_day_prompt_sets,
     get_episode_prompt_sets,
     render_episode_prompt_archive_summary,
     save_day_prompt_sets,
 )
-from src.utils.logging_utils import start_new_run_log
 
 
 def render_art_stage(context):
     """Stage 2: Art prompts + keyframe generation."""
-    mlx = context.mlx
     dt_client = context.dt_client
     model = context.mlx_model
     temperature = context.temperature
@@ -81,7 +80,7 @@ def render_art_stage(context):
     st.markdown("## Generate Art for Each Day")
 
     existing_prompts = get_episode_prompt_sets(episode)
-    prompt_summary = render_episode_prompt_archive_summary(st, episode)
+    render_episode_prompt_archive_summary(st, episode)
 
     for idx, day in enumerate(days):
         day_num = day["number"]

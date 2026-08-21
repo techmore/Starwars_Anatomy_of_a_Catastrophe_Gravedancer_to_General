@@ -1,19 +1,20 @@
 """Tab 2: Story Viewer & Editor + Visual Review Stage."""
 
+
 import streamlit as st
-from pathlib import Path
-from src.utils.story_generator import StoryGenerator
-from src.utils.storage import EpisodeStorage
+
+from src.components.ui import aspect_to_dims, copy_button
+from src.utils.logging_utils import start_new_run_log
 from src.utils.session_state import (
-    get_episode_target_jedi_name,
     episode_selector_label,
     get_episode_banner_prompt,
     get_episode_chapter_prompts,
+    get_episode_target_jedi_name,
     save_banner_prompt,
     save_chapter_prompt,
 )
-from src.utils.logging_utils import start_new_run_log
-from src.components.ui import copy_button, aspect_to_dims
+from src.utils.storage import EpisodeStorage
+from src.utils.story_generator import StoryGenerator
 
 
 def render_viewer_tab(context):
@@ -241,7 +242,7 @@ def _render_chapter_prompts_section(st, prompt_gen, storage, dt_client, chapters
                                          neg, aspect_ratio, steps, cfg,
                                          f"day{ch['day']}-ch{ch['chapter_index']}")
             else:
-                if st.button(f"Generate Prompt", key=f"viewer_gen_{key}"):
+                if st.button("Generate Prompt", key=f"viewer_gen_{key}"):
                     st.session_state["log_run_path"] = str(start_new_run_log("viewer-chapter"))
                     with st.spinner(f"Generating prompt for {label}..."):
                         result = prompt_gen.generate_chapter_prompt(
@@ -414,12 +415,12 @@ def _render_story_arc_section(st, prompt_gen, storage, dt_client, episodes, sele
                     meta = ep_data["metadata"]
                     if existing:
                         st.code(existing[:120] + ("..." if len(existing) > 120 else ""), language="text")
-                        if dt_ok and st.button(f"🖼 Render", key=f"arc_render_{i}"):
+                        if dt_ok and st.button("🖼 Render", key=f"arc_render_{i}"):
                             neg = (ep_data.get("prompts") or {}).get("banner", {}).get("negative_prompt", "")
                             _render_keyframe(dt_client, storage, arc_ep["id"], i + 1, existing, neg,
                                              aspect_ratio, steps, cfg, f"arc-banner-{i + 1}")
                     else:
-                        if st.button(f"Generate Banner", key=f"arc_gen_{i}"):
+                        if st.button("Generate Banner", key=f"arc_gen_{i}"):
                             st.session_state["log_run_path"] = str(start_new_run_log("arc-banner"))
                             with st.spinner(f"Generating banner for {arc_ep['title']}..."):
                                 result = prompt_gen.generate_banner_prompt(meta, model, temperature)

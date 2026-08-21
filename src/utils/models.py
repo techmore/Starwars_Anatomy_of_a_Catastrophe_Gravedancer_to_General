@@ -4,6 +4,8 @@ Each model has metadata about what it's best for, memory requirements, and quali
 The app uses this to recommend models in the UI when MLX models are detected.
 """
 
+from pathlib import Path
+
 # Model metadata: name -> {display, quality, strengths, ram_gb, family}
 # Names use prefix-matching to match any tag (e.g., "llama3.1" matches "llama3.1:8b")
 MODEL_CATALOG = {
@@ -246,11 +248,6 @@ STORY_RECOMMENDED = [
     "gemma2",
     "mixtral"
 ]
-
-import os
-import re
-from pathlib import Path
-
 
 # Default model — Qwen 3.8 27B OptiQ is the primary local story workflow for
 # the target M1 Pro (32 GB unified memory). Bonsai remains available through

@@ -2,13 +2,21 @@
 
 import streamlit as st
 
-from src.utils.logging_utils import get_logger, get_run_log_name, list_log_runs, read_log_tail, start_new_run_log
-from src.utils.mlx_client import get_mlx_client, OPENCODE_PREFIX, OPENCODE_DEFAULT_MODEL
-from src.utils.models import get_m1_pro_32gb_guidance, normalize_model_name, list_local_mlx_models, DEFAULT_MODEL
+from src.utils.drawthings_client import DEFAULT_DT_PORTS, get_drawthings_client
+from src.utils.logging_utils import (
+    get_logger,
+    get_run_log_name,
+    list_log_runs,
+    read_log_tail,
+    start_new_run_log,
+)
+from src.utils.mlx_client import OPENCODE_DEFAULT_MODEL, OPENCODE_PREFIX, get_mlx_client
+from src.utils.models import (
+    get_m1_pro_32gb_guidance,
+    list_local_mlx_models,
+    normalize_model_name,
+)
 from src.utils.storage import get_storage
-from src.utils.drawthings_client import get_drawthings_client, DEFAULT_DT_PORTS
-from src.utils.session_state import episode_selector_label
-
 
 LOGGER = get_logger(__name__)
 
@@ -82,9 +90,8 @@ def render_sidebar():
         model_options = [("OpenCode / Zen · DeepSeek V4 Free", f"{OPENCODE_PREFIX}{OPENCODE_DEFAULT_MODEL}")] + local_models + [("Custom...", "__custom__")]
         current_model = st.session_state["mlx_model"]
         # Find current model in options; default to Custom if not found
-        local_repo_ids = [r for _, r in local_models]
         current_idx = len(model_options) - 1  # default to Custom
-        for idx, (label, repo_id) in enumerate(model_options):
+        for idx, (_label, repo_id) in enumerate(model_options):
             if repo_id == current_model:
                 current_idx = idx
                 break

@@ -19,11 +19,10 @@ Design notes:
 
 import base64
 import time
-import io
-from typing import Dict, Any, Optional, List, Tuple
+from typing import Any
 
 # Ports Draw Things is known to use. Sidebar probes these in order.
-DEFAULT_DT_PORTS: Tuple[int, ...] = (7859, 7860, 7001)
+DEFAULT_DT_PORTS: tuple[int, ...] = (7859, 7860, 7001)
 
 
 def _requests():
@@ -52,7 +51,7 @@ class DrawThingsClient:
         """
         requests = _requests()
         timeout = kwargs.pop("timeout", 300)
-        last_err: Optional[Exception] = None
+        last_err: Exception | None = None
         for attempt in range(3):
             try:
                 return requests.request(method, url, timeout=timeout, **kwargs)
@@ -72,7 +71,7 @@ class DrawThingsClient:
         except Exception:
             return False
 
-    def get_options(self) -> Dict[str, Any]:
+    def get_options(self) -> dict[str, Any]:
         r = self._request("GET", self.options, timeout=5)
         r.raise_for_status()
         return r.json()
@@ -85,7 +84,7 @@ class DrawThingsClient:
         except Exception:
             return ""
 
-    def list_models(self) -> List[str]:
+    def list_models(self) -> list[str]:
         """Return available model titles. Returns [] if the endpoint is missing."""
         try:
             r = self._request("GET", self.models, timeout=5)
@@ -128,10 +127,10 @@ class DrawThingsClient:
         cfg: float = 2.5,
         sampler: str = "Euler a",
         seed: int = -1,
-        extra: Optional[Dict[str, Any]] = None,
+        extra: dict[str, Any] | None = None,
     ) -> bytes:
         """Generate a keyframe image via Flux.2 Klein 4b. Returns PNG bytes."""
-        payload: Dict[str, Any] = {
+        payload: dict[str, Any] = {
             "prompt": prompt,
             "negative_prompt": negative_prompt,
             "width": width,
@@ -172,8 +171,8 @@ class DrawThingsClient:
         cfg: float = 7.0,
         seed: int = -1,
         sampler: str = "Euler",
-        extra: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
+        extra: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """Attempt an image-to-video clip via Wan 2.2.
 
         Draw Things' I2V response shape is not standardised. This returns a dict
@@ -181,7 +180,7 @@ class DrawThingsClient:
         should fall back to showing the keyframe + motion prompt for manual use).
         """
         init_b64 = base64.b64encode(init_image_bytes).decode("ascii")
-        payload: Dict[str, Any] = {
+        payload: dict[str, Any] = {
             "init_images": [init_b64],
             "prompt": prompt,
             "negative_prompt": negative_prompt,

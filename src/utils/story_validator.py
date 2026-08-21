@@ -5,7 +5,8 @@ near-identical days of content). Does NOT block — surfaces warnings only.
 """
 
 import re
-from typing import Dict, Any, List
+from typing import Any
+
 from src.utils.prompt_schema import TARGET_WORDS_PER_DAY
 
 # Below this fraction of the target length we flag a short story.
@@ -20,7 +21,7 @@ def strip_saved_episode_header(story: str) -> str:
     return text[match.start():].lstrip() if match else text.strip()
 
 
-def deduplicate_story(story: str) -> tuple[str, Dict[str, int]]:
+def deduplicate_story(story: str) -> tuple[str, dict[str, int]]:
     """Remove only repeated model output while preserving first occurrences.
 
     This is a recovery step for local models that occasionally copy a full
@@ -72,9 +73,9 @@ def deduplicate_story(story: str) -> tuple[str, Dict[str, int]]:
     }
 
 
-def validate_story(story: str, expected_days: int | None = None) -> Dict[str, Any]:
+def validate_story(story: str, expected_days: int | None = None) -> dict[str, Any]:
     """Return a report dict with warnings + raw metrics."""
-    report: Dict[str, Any] = {
+    report: dict[str, Any] = {
         "warnings": [],
         "word_count": 0,
         "num_days_found": 0,
@@ -110,8 +111,8 @@ def validate_story(story: str, expected_days: int | None = None) -> Dict[str, An
 
     # Duplicate paragraph detection — the qwen3:8b failure mode.
     paragraphs = [p.strip() for p in re.split(r"\n\s*\n", story) if len(p.strip()) > 80]
-    seen: Dict[str, int] = {}
-    dupes: List[str] = []
+    seen: dict[str, int] = {}
+    dupes: list[str] = []
     for p in paragraphs:
         norm = re.sub(r"\s+", " ", p.lower())
         if norm in seen:
@@ -128,8 +129,8 @@ def validate_story(story: str, expected_days: int | None = None) -> Dict[str, An
     # Near-duplicate sentence detection (catches paraphrased repetition).
     sentences = re.split(r"(?<=[.!?])\s+", re.sub(r"\s+", " ", story))
     sentences = [s.strip().lower() for s in sentences if 40 < len(s.strip()) < 400]
-    sig_seen: Dict[str, int] = {}
-    near_dupes: List[str] = []
+    sig_seen: dict[str, int] = {}
+    near_dupes: list[str] = []
     for s in sentences:
         # 8-word signature — cheap near-dup heuristic.
         sig = " ".join(s.split()[:8])

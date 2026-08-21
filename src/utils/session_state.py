@@ -1,14 +1,13 @@
 """Session-state helpers for the prototype UI shell."""
 
+from collections.abc import Iterable
 from copy import deepcopy
-from typing import Iterable
 
 from src.prompts.system_prompts import (
     STORY_GENERATION_SYSTEM_PROMPT,
     VISUAL_PROMPT_SYSTEM_PROMPT,
 )
 from src.utils.settings import SETTINGS
-
 
 SESSION_DEFAULTS = {
     "current_episode_id": None,

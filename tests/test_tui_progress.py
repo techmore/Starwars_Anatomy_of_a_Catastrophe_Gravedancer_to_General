@@ -6,7 +6,6 @@ from pathlib import Path
 
 from tui import RunProgress, _progress_bar
 
-
 LINES = [
     "CREATIVE SEED (value=42)",
     "  Days:   6",

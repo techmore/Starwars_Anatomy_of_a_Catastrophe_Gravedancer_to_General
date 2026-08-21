@@ -1,36 +1,48 @@
 import tempfile
 import unittest
 from pathlib import Path
-from types import SimpleNamespace
 from unittest.mock import patch
 
-from src.utils.logging_utils import LOG_DIR, LOG_PATH, RUN_LOG_PATH, get_run_log_name, list_log_runs, read_log_tail, start_new_run_log, write_debug_artifact
 from src.utils import models
-from src.utils.models import MODEL_CATALOG, get_m1_pro_32gb_guidance, sort_models_for_ui
-from src.utils.models import DEFAULT_MODEL
+from src.utils.logging_utils import (
+    LOG_DIR,
+    LOG_PATH,
+    RUN_LOG_PATH,
+    get_run_log_name,
+    list_log_runs,
+    read_log_tail,
+    start_new_run_log,
+    write_debug_artifact,
+)
+from src.utils.models import (
+    DEFAULT_MODEL,
+    MODEL_CATALOG,
+    get_m1_pro_32gb_guidance,
+    sort_models_for_ui,
+)
 from src.utils.session_state import (
+    SESSION_DEFAULTS,
+    build_episode_full_json_export,
     build_episode_payload,
     build_jedi_details,
     build_prompt_set,
-    get_episode_day_prompt_sets,
-    get_episode_prompt_sets,
-    merge_prompt_sets,
-    build_episode_full_json_export,
-    get_episode_target_jedi_name,
-    episode_selector_label,
-    render_episode_prompt_archive_summary,
-    save_day_prompt_sets,
-    summarize_episode_prompt_archive,
-    summarize_episode_collection,
     build_story_generation_context,
     build_story_metadata,
-    SESSION_DEFAULTS,
     clear_current_episode,
     clear_story_inputs,
+    episode_selector_label,
+    get_episode_day_prompt_sets,
+    get_episode_prompt_sets,
+    get_episode_target_jedi_name,
     hydrate_story_inputs,
     init_session_state,
     load_episode_into_session,
+    merge_prompt_sets,
     normalize_saved_prompt_sets_for_selection,
+    render_episode_prompt_archive_summary,
+    save_day_prompt_sets,
+    summarize_episode_collection,
+    summarize_episode_prompt_archive,
 )
 
 

@@ -31,7 +31,6 @@ import shlex
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
@@ -71,7 +70,7 @@ class RemoteTarget:
     def hostspec(self) -> str:
         return f"{self.user}@{self.host}" if self.user else self.host
 
-    def validate(self) -> Optional[str]:
+    def validate(self) -> str | None:
         """Return an error message when fields could be parsed as ssh options."""
         for label, value in (("host", self.host), ("user", self.user)):
             if value.startswith("-"):
@@ -99,7 +98,7 @@ def _dir_expr(dirpath: str) -> str:
     return shlex.quote(p)
 
 
-def _ssh_cmd(target: RemoteTarget, remote_code: str, connect_timeout: int = 8) -> List[str]:
+def _ssh_cmd(target: RemoteTarget, remote_code: str, connect_timeout: int = 8) -> list[str]:
     """Build ssh argv that runs ``remote_code`` as a single remote command."""
     base = [
         SSH_BIN,
@@ -119,7 +118,7 @@ def _ssh_cmd(target: RemoteTarget, remote_code: str, connect_timeout: int = 8) -
     return base + ["--", target.hostspec(), remote_code]
 
 
-def run_ssh(target: RemoteTarget, remote_code: str, timeout: float = 30) -> Dict[str, object]:
+def run_ssh(target: RemoteTarget, remote_code: str, timeout: float = 30) -> dict[str, object]:
     """Run a foreground SSH command (single shell string) and return output."""
     cmd = _ssh_cmd(target, remote_code)
     try:
@@ -143,12 +142,12 @@ def run_ssh(target: RemoteTarget, remote_code: str, timeout: float = 30) -> Dict
     }
 
 
-def test_connection(target: RemoteTarget) -> Dict[str, object]:
+def test_connection(target: RemoteTarget) -> dict[str, object]:
     """Reachability probe (fast, BatchMode so it never prompts)."""
     return run_ssh(target, "echo connected", timeout=10)
 
 
-def remote_info(target: RemoteTarget) -> Dict[str, object]:
+def remote_info(target: RemoteTarget) -> dict[str, object]:
     """Report python3/venv/ollama/project-dir presence on the host."""
     probe = (
         'echo "__PY__=$(command -v python3 || echo missing)"; '
@@ -157,7 +156,7 @@ def remote_info(target: RemoteTarget) -> Dict[str, object]:
         f'echo "__DIR__=$(test -d {_dir_expr(target.proj_dir)} && echo yes || echo no)"'
     )
     result = run_ssh(target, probe, timeout=15)
-    info: Dict[str, object] = {"host": target.host}
+    info: dict[str, object] = {"host": target.host}
     if not result["ok"]:
         info.update(ok=False, error=result.get("error") or result.get("stderr", ""))
         return info
@@ -169,9 +168,9 @@ def remote_info(target: RemoteTarget) -> Dict[str, object]:
     return info
 
 
-def deploy(target: RemoteTarget, timeout: float = 180) -> Dict[str, object]:
+def deploy(target: RemoteTarget, timeout: float = 180) -> dict[str, object]:
     """rsync the project and ensure a venv exists on the host."""
-    step_results: List[str] = []
+    step_results: list[str] = []
     work_dir = _dir_expr(target.proj_dir)
 
     mkdir = run_ssh(target, f"mkdir -p {work_dir}", timeout=15)
@@ -208,11 +207,11 @@ def deploy(target: RemoteTarget, timeout: float = 180) -> Dict[str, object]:
     return {"ok": True, "steps": step_results, "error": "", "info": remote_info(target)}
 
 
-def remote_models(target: RemoteTarget, timeout: float = 20) -> List[str]:
+def remote_models(target: RemoteTarget, timeout: float = 20) -> list[str]:
     """List model ids served by the remote inference server via ssh curl."""
     url = target.remote_inference_url().replace("/v1/chat/completions", "/v1/models")
     result = run_ssh(target, f"curl -s -m 8 {shlex.quote(url)} || true", timeout=timeout)
-    ids: List[str] = []
+    ids: list[str] = []
     stdout = str(result.get("stdout", ""))
     if stdout:
         try:
@@ -227,10 +226,10 @@ def remote_models(target: RemoteTarget, timeout: float = 20) -> List[str]:
 
 def remote_run_command(
     target: RemoteTarget,
-    extra_env: Dict[str, str],
+    extra_env: dict[str, str],
     seed: str,
     run_token: str = "",
-) -> List[str]:
+) -> list[str]:
     """Build the ssh argv that runs the pipeline on the host."""
     env = {"GRAVEDANCER_LMSTUDIO_URL": target.remote_inference_url()}
     env.update(extra_env)
@@ -246,7 +245,7 @@ def remote_run_command(
 
 def start_remote(
     target: RemoteTarget,
-    extra_env: Dict[str, str],
+    extra_env: dict[str, str],
     seed: str,
     run_token: str = "",
 ) -> subprocess.Popen:

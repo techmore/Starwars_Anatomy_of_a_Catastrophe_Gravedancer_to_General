@@ -1,8 +1,8 @@
 import unittest
 from unittest.mock import Mock
 
-from src.utils.prompt_generator import PromptGenerator, VISUAL_PROMPT_MAX_TOKENS
 from src.prompts.system_prompts import NEGATIVE_PROMPT_DEFAULT
+from src.utils.prompt_generator import VISUAL_PROMPT_MAX_TOKENS, PromptGenerator
 
 
 class TestPromptGenerator(unittest.TestCase):

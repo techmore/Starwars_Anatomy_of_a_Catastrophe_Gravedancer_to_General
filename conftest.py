@@ -1,8 +1,7 @@
 """Pytest bootstrap for local source imports."""
 
-from pathlib import Path
 import sys
-
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 if str(ROOT) not in sys.path:

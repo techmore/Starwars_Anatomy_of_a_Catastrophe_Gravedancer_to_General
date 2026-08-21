@@ -7,6 +7,10 @@ extend-exclude = ["episodes", "Images", "log", "qwen3.6-27b-4bit", "venv"]
 select = ["E", "F", "I", "UP", "B"]
 ignore = ["E501"]
 
+[tool.ruff.lint.per-file-ignores]
+# Scripts bootstrap sys.path before importing project modules.
+"scripts/*.py" = ["E402"]
+
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"

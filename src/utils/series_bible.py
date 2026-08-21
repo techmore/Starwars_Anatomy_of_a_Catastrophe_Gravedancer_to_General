@@ -11,10 +11,9 @@ import json
 import re
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Union
+from typing import Any
 
 from src.utils.logging_utils import get_logger
-
 
 LOGGER = get_logger(__name__)
 
@@ -25,11 +24,11 @@ BIBLE_PROMPT_MAX_CHARS = 4000
 BIBLE_PROMPT_MAX_EPISODES = 8
 
 
-def bible_path(base_path: Union[str, Path]) -> Path:
+def bible_path(base_path: str | Path) -> Path:
     return Path(base_path) / BIBLE_FILENAME
 
 
-def load_entries(base_path: Union[str, Path]) -> List[Dict[str, Any]]:
+def load_entries(base_path: str | Path) -> list[dict[str, Any]]:
     """Read all episode entries; a missing or corrupt file means empty history."""
     path = bible_path(base_path)
     if not path.is_file():
@@ -45,7 +44,7 @@ def load_entries(base_path: Union[str, Path]) -> List[Dict[str, Any]]:
     return [entry for entry in entries if isinstance(entry, dict)]
 
 
-def update_entry(base_path: Union[str, Path], entry: Dict[str, Any]) -> Path:
+def update_entry(base_path: str | Path, entry: dict[str, Any]) -> Path:
     """Merge *entry* into the bible (replacing any prior entry with the same title)."""
     base = Path(base_path)
     base.mkdir(parents=True, exist_ok=True)
@@ -89,7 +88,7 @@ Return ONLY the JSON object — no markdown fence, no commentary — with exactl
 Facts only, drawn from the story above. Do not invent events."""
 
 
-def parse_entry(text: str) -> Dict[str, Any] | None:
+def parse_entry(text: str) -> dict[str, Any] | None:
     """Extract a bible entry from a model response; None when unusable."""
     match = re.search(r"\{.*\}", text or "", re.DOTALL)
     if not match:
@@ -104,11 +103,11 @@ def parse_entry(text: str) -> Dict[str, Any] | None:
 
 
 def format_for_prompt(
-    entries: List[Dict[str, Any]],
+    entries: list[dict[str, Any]],
     max_chars: int = BIBLE_PROMPT_MAX_CHARS,
 ) -> str:
     """Render earlier-episode digests for injection into concept/outline prompts."""
-    blocks: List[str] = []
+    blocks: list[str] = []
     for entry in entries[-BIBLE_PROMPT_MAX_EPISODES:]:
         lines = [f'- Episode "{str(entry.get("title") or "Untitled").strip()}"']
         jedi = entry.get("jedi")

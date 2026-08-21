@@ -6,7 +6,7 @@ falls into.
 """
 
 import random
-from typing import Dict, Any, List, Optional
+from typing import Any
 
 # ── Jedi ──────────────────────────────────────────────────────────────────
 
@@ -228,16 +228,16 @@ EPISODE_TITLE_TEMPLATES = [
 # ── Selectors ──────────────────────────────────────────────────────────────
 
 
-def _pick_unique(exclude: List[str], pool: List[str], rng: random.Random) -> str:
+def _pick_unique(exclude: list[str], pool: list[str], rng: random.Random) -> str:
     """Pick a value from *pool* not in *exclude*; if all are excluded, pick any."""
     candidates = [v for v in pool if v not in exclude]
     return rng.choice(candidates) if candidates else rng.choice(pool)
 
 
 def generate_creative_seed(
-    used_jedi_names: Optional[List[str]] = None,
-    seed: Optional[int] = None,
-) -> Dict[str, Any]:
+    used_jedi_names: list[str] | None = None,
+    seed: int | None = None,
+) -> dict[str, Any]:
     """Generate a structured creative seed from the randomization tables.
 
     Returns a dict that can be fed directly into the LLM expansion
@@ -270,17 +270,22 @@ def generate_creative_seed(
     personality = rng.choice(JEDI_PERSONALITY_TRAITS)
     why_targeted = rng.choice(JEDI_WHY_TARGETED)
 
-    # Build a jedi name from fragments that fit the species
-    jedi_first = rng.choice([
+    # Build a jedi name from fragments that fit the species, rerolling past
+    # any name in the exclusion list (bounded; falls back to the last pick).
+    jedi_first_pool = [
         "Solen", "Kaelen", "Vex'", "Thal", "Miren", "Jorak",
         "Lyra", "Venn", "Soral", "Kivan", "Rell", "Tavik",
         "Zara", "Nyx", "Oren", "Fael", "Dorn", "Ithiel",
-    ])
-    jedi_last = rng.choice([
+    ]
+    jedi_last_pool = [
         "Vex", "Korr", "Marr", "Venn", "Thal", "Rell",
         "Soral", "Nyxar", "Kivan", "Torr", "Fael", "Dorn",
-    ])
-    jedi_name = f"{jedi_first} {jedi_last}"
+    ]
+    jedi_name = f"{rng.choice(jedi_first_pool)} {rng.choice(jedi_last_pool)}"
+    for _ in range(10):
+        if jedi_name not in used:
+            break
+        jedi_name = f"{rng.choice(jedi_first_pool)} {rng.choice(jedi_last_pool)}"
 
     # ── Setting ────────────────────────────────────────────────────────
     planet = rng.choice(PLANET_TYPES)
