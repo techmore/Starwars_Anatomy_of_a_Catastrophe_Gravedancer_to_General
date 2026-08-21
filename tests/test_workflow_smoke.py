@@ -9,7 +9,7 @@ from src.utils.storage import EpisodeStorage
 from src.utils.streaming_ui import STREAM_PANEL_KEYS, build_progress_state, build_stream_runtime, finalize_stream_state, render_cached_outline_banner, render_stream_update, reset_stream_panels
 from src.utils import story_generator as story_generator_module
 from src.utils.story_generator import OUTLINE_MAX_TOKENS, SECTION_MAX_TOKENS, GenerationCancelled, StoryGenerator, outline_token_budget
-from src.utils.concepts import build_concept_context_prompt, build_concept_extraction_prompt, try_parse_full_episode_concept, VALID_TONES
+from src.utils.concepts import build_concept_context_prompt, build_concept_extraction_prompt, try_parse_full_episode_concept
 from src.utils.prompt_schema import STORY_MULTI_PASS_RULES, STORY_STRUCTURE_REQUIREMENTS, validate_outline_quality, validate_outline_structure, validate_story_prompt_inputs
 from scripts.run_spec_pilot import PILOT_JEDI_FALLBACK, _complete_visual_variants, _dedupe_concept_text
 
@@ -68,6 +68,16 @@ class TestWorkflowSmoke(unittest.TestCase):
         self.assertEqual(visual["wide"], "existing wide shot")
         self.assertTrue(all(visual.get(key) for key in ("wide", "medium", "closeup", "dramatic", "alternate")))
         self.assertIn("flooded refinery floor", visual["dramatic"])
+
+    def test_spec_pilot_concept_takes_model_argument(self):
+        # Regression: _concept referenced an undefined global `model`, which
+        # raised NameError the moment the pilot's concept stage ran.
+        import inspect
+
+        from scripts.run_spec_pilot import _concept
+
+        params = list(inspect.signature(_concept).parameters)
+        self.assertIn("model", params)
 
     def test_build_stream_runtime_returns_widgets_and_state(self):
         class _Streamlit:

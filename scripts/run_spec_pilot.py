@@ -177,7 +177,7 @@ def _complete_visual_variants(visual: dict, scene: dict) -> tuple[dict, bool]:
     return visual, recovered
 
 
-def _concept(client: MLXClient) -> tuple[dict, str]:
+def _concept(client: MLXClient, model: str) -> tuple[dict, str]:
     concept_text = client.generate(
         model,
         f"Create a vivid 2-4 paragraph concept proposal from this creator seed. "
@@ -324,7 +324,7 @@ def main() -> None:
         episode_id = args.resume_episode
         print(f"RESUMING_EPISODE_ID={episode_id}", flush=True)
     else:
-        concept, concept_text = _concept(client)
+        concept, concept_text = _concept(client, model)
         title = concept["title"]
         jedi_details = {
             "name": concept["jedi_name"],

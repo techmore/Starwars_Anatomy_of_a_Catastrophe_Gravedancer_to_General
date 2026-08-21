@@ -3,7 +3,6 @@
 import importlib.util
 import gc
 import json
-import logging
 import os
 import re
 import subprocess
@@ -13,7 +12,7 @@ import time
 import urllib.request
 import urllib.error
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Iterable, List, Optional
 
 from src.utils.logging_utils import get_logger
 from src.utils.models import DEFAULT_MODEL, list_local_mlx_models, normalize_model_name

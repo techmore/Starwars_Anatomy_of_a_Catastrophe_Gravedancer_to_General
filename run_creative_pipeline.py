@@ -9,7 +9,6 @@ by the LLM into a full episode with outline → story → banner → chapter pro
 
 import argparse
 import atexit
-import json
 import signal
 import sys
 import time

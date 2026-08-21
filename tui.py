@@ -32,7 +32,7 @@ import uuid
 import webbrowser
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from rich.text import Text
 from textual import work
@@ -1400,9 +1400,8 @@ class GravedancerTUI(App):
                 for l in record.lines
                 if any(m in l for m in ("TOTAL PIPELINE", "Episode saved:", "Episode ID:"))
             )
-            hint = " · press [bold]o[/] to read it" if record.episode_id else ""
             if event.run_id == self.active_run_id:
-                self._log(f"\n✓ Finished (exit 0).{('' )}"
+                self._log(f"\n✓ Finished (exit 0)."
                           + (f"\n{summary}" if summary else ""))
             self._set_status(
                 f"[bold green]Done ✓[/] {record.label}" + (f"\n{summary}" if summary else "")
@@ -1692,24 +1691,9 @@ class GravedancerTUI(App):
             return
         self._stop_run(self.active_run_id)
 
-    def action_quit(self) -> None:
-        # Best-effort cleanup so quitting does not orphan detached pipeline
-        # processes holding unified memory. Local runs get SIGTERM (the
-        # pipeline checkpoints completed days); remote ssh clients are closed.
-        for record in self.runs.values():
-            if record.status != "running" or record.popen is None:
-                continue
-            try:
-                if record.local:
-                    os.killpg(os.getpgid(record.popen.pid), signal.SIGTERM)
-                else:
-                    record.popen.terminate()
-            except (OSError, ProcessLookupError):
-                try:
-                    record.popen.terminate()
-                except OSError:
-                    pass
-        self.exit()
+    # NOTE: the quit-guard action_quit (bottom of file) is the single,
+    # authoritative implementation — a plain kill-all version used to be
+    # shadowed here as dead code.
 
     def _stop_run(self, run_id: str) -> None:
         record = self.runs.get(run_id)

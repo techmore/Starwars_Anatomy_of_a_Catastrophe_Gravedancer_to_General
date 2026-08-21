@@ -121,6 +121,8 @@ Storyboard frame.
         self.assertTrue(scenes)
         self.assertIn("A clash in the ash", prompt)
         self.assertIn("BEAT ANCHOR", prompt)
+        self.assertTrue(all(parsed.get(k) for k in ("wide", "medium", "closeup", "dramatic", "alternate")))
+        self.assertEqual(parsed.get("video_camera"), "Tracking dolly.")
         self.assertIn("extract_scenes start", "\n".join(logs.output))
         self.assertIn("extract_scenes end", "\n".join(logs.output))
         self.assertIn("build_scene_prompt day=1", "\n".join(logs.output))

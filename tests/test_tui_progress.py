@@ -126,8 +126,6 @@ class TestRunRowLabels(unittest.TestCase):
     def test_literal_duration_brackets_survive(self):
         # Labels are Text objects, so "[   12s]" must not be parsed as markup.
         text = self._label_text(self._record("stopped"))
-        import re as _re
-
         self.assertRegex(str(text), r"\[\s*\d+s\]")
 
 

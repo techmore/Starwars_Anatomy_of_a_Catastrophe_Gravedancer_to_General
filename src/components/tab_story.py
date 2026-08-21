@@ -21,7 +21,7 @@ from src.components.pipeline_timeline import render_pipeline_timeline, PipelineT
 from src.components.ui import preformatted_html
 from src.utils.streaming_ui import build_stream_runtime, finalize_stream_state, render_cached_outline_banner, render_stream_update, reset_stream_panels
 from src.utils.session_state import (
-    build_episode_payload, build_jedi_details,
+    build_episode_payload,
     hydrate_story_inputs,
     reset_story_flow,
     render_episode_prompt_archive_summary,
