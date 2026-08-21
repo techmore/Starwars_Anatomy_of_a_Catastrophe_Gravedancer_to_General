@@ -39,10 +39,11 @@ LOGGER = get_logger(__name__)
 # room for the arc and headings while preventing a thinking model from
 # spending many minutes on an overlong planning response.
 OUTLINE_MAX_TOKENS = 5000
-# Five chapters/day at roughly 1,400-1,600 words/chapter is enough to meet the
-# product target. A tighter ceiling gives Bonsai a clear stopping point before
-# it starts filling the remaining budget with repeated combat/dialogue loops.
-SECTION_MAX_TOKENS = 4500
+# Five sections/day at roughly 1,400-1,600 words/chapter is enough to meet the
+# product target on memory-bound local models. Hosted runs override this via
+# GRAVEDANCER_SECTION_MAX_TOKENS (the TUI sets 12000 for OpenCode) so a
+# 5-chapter day can reach the ~45k-token daily target.
+SECTION_MAX_TOKENS = int(os.environ.get("GRAVEDANCER_SECTION_MAX_TOKENS", "4500"))
 
 OUTLINE_RECOVERY_ATTEMPTS = 3
 

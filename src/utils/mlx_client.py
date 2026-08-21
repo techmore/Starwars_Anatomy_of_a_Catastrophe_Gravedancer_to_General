@@ -274,6 +274,32 @@ class MLXClient:
                     continue
                 raise RuntimeError(f"Could not start OpenCode: {exc}") from exc
         assert proc is not None
+
+        # Watchdog: hosted endpoints occasionally hang silently (capacity,
+        # rate limits). Kill after a no-output stall or an overall timeout so
+        # the caller gets an error instead of blocking forever.
+        stall_s = int(os.environ.get("GRAVEDANCER_OPENCODE_STALL", "600"))
+        timeout_s = int(os.environ.get("GRAVEDANCER_OPENCODE_TIMEOUT", "1800"))
+        watch = {"last": time.monotonic(), "start": time.monotonic(), "reason": ""}
+
+        def _watchdog() -> None:
+            while proc.poll() is None:
+                now = time.monotonic()
+                idle = now - watch["last"]
+                if idle > stall_s:
+                    watch["reason"] = (
+                        f"no output for {int(idle)}s (hosted endpoint stall — "
+                        "try again, or switch model/plan)"
+                    )
+                    proc.kill()
+                    return
+                if now - watch["start"] > timeout_s:
+                    watch["reason"] = f"exceeded {timeout_s}s overall timeout"
+                    proc.kill()
+                    return
+                time.sleep(5)
+
+        threading.Thread(target=_watchdog, daemon=True).start()
         # Drain stderr concurrently so a chatty child can never fill the pipe
         # and deadlock the stdout loop.
         stderr_chunks: List[str] = []
@@ -284,6 +310,7 @@ class MLXClient:
         stderr_thread.start()
         try:
             for line in proc.stdout:
+                watch["last"] = time.monotonic()
                 try:
                     event = json.loads(line)
                 except json.JSONDecodeError:
@@ -293,7 +320,14 @@ class MLXClient:
                     text = event["part"].get("text")
                 if text:
                     yield _strip_think_blocks(str(text))
-            if proc.wait() != 0:
+            return_code = proc.wait()
+            if watch["reason"]:
+                raise RuntimeError(
+                    f"OpenCode {watch['reason']}. Free-tier endpoints stall under "
+                    "volume — retry, or switch model (e.g. gpt-5.6-luna) for "
+                    "long runs."
+                )
+            if return_code != 0:
                 raise RuntimeError("".join(stderr_chunks)[-2000:] or "OpenCode run failed")
         finally:
             self._reap_stream_process(proc)
