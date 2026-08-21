@@ -830,3 +830,37 @@ Storyboard frame with harsh contrast and crimson atmosphere.
                 story_generator_module._section_tail_chars(),
                 story_generator_module.SECTION_TAIL_CHARS,
             )
+
+    def test_multi_pass_routes_recap_to_recap_model(self):
+        ollama = Mock()
+        outline = (
+            "## EPISODE ARC\nA test arc.\n\n## DAY 1: Ashfall\n"
+            "- Purpose: Establish the hunt.\n"
+            "- Chapter 1: Beat 1: Arrival. Beat 2: Tracks. Beat 3: Tension. Beat 4: Move.\n"
+            "- Chapter 2: Beat 1: Pursuit. Beat 2: Trap. Beat 3: Counter. Beat 4: Escape.\n"
+            "- Chapter 3: Beat 1: Contact. Beat 2: Threat. Beat 3: Choice. Beat 4: Retreat.\n"
+            "- Chapter 4: Beat 1: Camp. Beat 2: Signal. Beat 3: Watch. Beat 4: Dawn.\n"
+            "- Chapter 5: Beat 1: Choice. Beat 2: Departure. Beat 3: Cost. Beat 4: Trail.\n"
+            "- Ending hook: The trail continues."
+        )
+        ollama.generate_stream.side_effect = [iter(["Prose."])] * 5
+        ollama.generate.side_effect = ["Recap."]
+        story_gen = StoryGenerator(ollama)
+
+        story_gen.generate_episode_story_multi_pass(
+            model="story-model",
+            recap_model="recap-model",
+            title="Recap Routing Test",
+            num_days=1,
+            jedi_details={"name": "Vael Tirin"},
+            setting="Ryloth frontier",
+            tone_focus=["dread"],
+            additional_instructions="",
+            temperature=0.6,
+            outline=outline,
+        )
+
+        self.assertEqual(ollama.generate.call_count, 1)
+        self.assertEqual(ollama.generate.call_args.kwargs["model"], "recap-model")
+        stream_models = {call.kwargs["model"] for call in ollama.generate_stream.call_args_list}
+        self.assertEqual(stream_models, {"story-model"})

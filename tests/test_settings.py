@@ -4,7 +4,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from src.utils.models import DEFAULT_MODEL
-from src.utils.settings import PROJECT_ROOT, load_settings
+from src.utils.settings import PROJECT_ROOT, load_settings, stage_model
 
 
 class TestSettings(unittest.TestCase):
@@ -37,3 +37,30 @@ class TestSettings(unittest.TestCase):
             settings = load_settings()
 
         self.assertEqual(settings.model, DEFAULT_MODEL)
+
+
+class TestStageModelRouting(unittest.TestCase):
+    def test_main_model_used_without_overrides(self):
+        with patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(stage_model("outline", "main-model"), "main-model")
+            self.assertEqual(stage_model("recap", "main-model"), "main-model")
+
+    def test_env_override_applies_per_stage_only(self):
+        env = {
+            "GRAVEDANCER_MODEL_OUTLINE": "planner",
+            "GRAVEDANCER_MODEL_STORY": "writer",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            self.assertEqual(stage_model("outline", "main"), "planner")
+            self.assertEqual(stage_model("story", "main"), "writer")
+            self.assertEqual(stage_model("recap", "main"), "main")
+            self.assertEqual(stage_model("visual", "main"), "main")
+
+    def test_cli_override_wins_over_env(self):
+        with patch.dict(os.environ, {"GRAVEDANCER_MODEL_STORY": "env-writer"}, clear=True):
+            self.assertEqual(stage_model("story", "main", "flag-writer"), "flag-writer")
+
+    def test_blank_values_fall_through_to_main(self):
+        with patch.dict(os.environ, {"GRAVEDANCER_MODEL_VISUAL": "  "}, clear=True):
+            self.assertEqual(stage_model("visual", "main", ""), "main")
+            self.assertEqual(stage_model("unknown-stage", "main", "  "), "main")

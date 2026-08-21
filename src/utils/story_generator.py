@@ -536,6 +536,7 @@ Do not retell the plot beat-by-beat. Do not comment on style or quality. Facts o
         outline: Optional[str] = None,
         day_drafts: Optional[Dict[int, str]] = None,
         day_recaps: Optional[Dict[int, str]] = None,
+        recap_model: Optional[str] = None,
         draft_only: bool = False,
         progress_callback: ProgressCallback | None = None,
         outline_max_tokens: int | None = None,
@@ -832,7 +833,7 @@ Do not retell the plot beat-by-beat. Do not comment on style or quality. Facts o
                 recap_start = time.perf_counter()
                 try:
                     this_day_recap = self.generate_day_recap(
-                        model=model,
+                        model=recap_model or model,
                         title=title,
                         day_number=day_number,
                         day_text=day_text,

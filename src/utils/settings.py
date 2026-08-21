@@ -38,4 +38,25 @@ def load_settings() -> AppSettings:
     )
 
 
+# Per-stage model routing: outline on the strongest plot model, prose on the
+# best writer, recap/visual work on a cheap fast model. Precedence per stage:
+# explicit CLI flag > GRAVEDANCER_MODEL_<STAGE> env > the run's main model.
+STAGE_MODEL_ENV_VARS = {
+    "outline": "GRAVEDANCER_MODEL_OUTLINE",
+    "story": "GRAVEDANCER_MODEL_STORY",
+    "recap": "GRAVEDANCER_MODEL_RECAP",
+    "visual": "GRAVEDANCER_MODEL_VISUAL",
+}
+
+
+def stage_model(stage: str, main_model: str, override: str = "") -> str:
+    """Resolve the model for a pipeline stage (CLI override > env > main)."""
+    candidate = (override or "").strip()
+    if candidate:
+        return candidate
+    env_name = STAGE_MODEL_ENV_VARS.get(stage, "")
+    candidate = os.environ.get(env_name, "").strip() if env_name else ""
+    return candidate or main_model
+
+
 SETTINGS = load_settings()

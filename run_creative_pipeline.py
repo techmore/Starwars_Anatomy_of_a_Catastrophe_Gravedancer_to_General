@@ -24,7 +24,7 @@ from src.utils.story_generator import GenerationCancelled, StoryGenerator
 from src.utils.storage import EpisodeStorage
 from src.utils.prompt_generator import PromptGenerator
 from src.utils.prompt_schema import TARGET_WORDS_PER_DAY
-from src.utils.settings import SETTINGS
+from src.utils.settings import SETTINGS, stage_model
 
 try:
     from rich.console import Console
@@ -88,7 +88,14 @@ def _find_checkpoint(storage: EpisodeStorage, title: str) -> Optional[Dict[str, 
     return None
 
 
-def main(seed_value: int = DEFAULT_SEED_VALUE, model: Optional[str] = None):
+def main(
+    seed_value: int = DEFAULT_SEED_VALUE,
+    model: Optional[str] = None,
+    outline_model: Optional[str] = None,
+    story_model: Optional[str] = None,
+    recap_model: Optional[str] = None,
+    visual_model: Optional[str] = None,
+):
     _install_cancel_handler()
     console = Console() if RICH_AVAILABLE else None
     pipeline_start = time.perf_counter()
@@ -121,9 +128,19 @@ def main(seed_value: int = DEFAULT_SEED_VALUE, model: Optional[str] = None):
     print(f"  Why targeted: {seed['jedi_why_targeted']}")
     print()
 
-    # Pick model if not specified
+    # Pick model if not specified; per-stage overrides (CLI flag > env > main)
+    # let weak stages go to a cheap fast model and hard stages to the strongest.
     resolved_model = model or SETTINGS.model
+    model_outline = stage_model("outline", resolved_model, outline_model or "")
+    model_story = stage_model("story", resolved_model, story_model or "")
+    model_recap = stage_model("recap", resolved_model, recap_model or "")
+    model_visual = stage_model("visual", resolved_model, visual_model or "")
     print(f"Using model: {resolved_model}")
+    if len({model_outline, model_story, model_recap, model_visual}) > 1:
+        print(f"  outline: {model_outline}")
+        print(f"  story:   {model_story}")
+        print(f"  recap:   {model_recap}")
+        print(f"  visual:  {model_visual}")
     print()
 
     # ── 2. Initialize pipeline components ────────────────────────────────
@@ -202,7 +219,7 @@ def main(seed_value: int = DEFAULT_SEED_VALUE, model: Optional[str] = None):
         print(f"Outline reused from checkpoint ({len(outline):,} chars)")
     else:
         outline = story_gen.generate_episode_outline(
-            model=resolved_model,
+            model=model_outline,
             title=seed["title"],
             num_days=seed["num_days"],
             jedi_details=jedi_details,
@@ -211,7 +228,7 @@ def main(seed_value: int = DEFAULT_SEED_VALUE, model: Optional[str] = None):
             additional_instructions=additional_instructions,
             temperature=0.6,  # slightly creative but structured
         )
-        metadata["model_outline"] = resolved_model
+        metadata["model_outline"] = model_outline
         stage_complete("Outline", outline_start)
         print(f"\nOutline generated ({len(outline):,} chars) in "
               f"{time.perf_counter() - outline_start:.1f}s")
@@ -256,7 +273,7 @@ def main(seed_value: int = DEFAULT_SEED_VALUE, model: Optional[str] = None):
 
     try:
         story = story_gen.generate_episode_story_multi_pass(
-            model=resolved_model,
+            model=model_story,
             title=seed["title"],
             num_days=seed["num_days"],
             jedi_details=jedi_details,
@@ -267,6 +284,7 @@ def main(seed_value: int = DEFAULT_SEED_VALUE, model: Optional[str] = None):
             outline=outline,
             day_drafts=day_drafts or None,
             day_recaps=day_recaps or None,
+            recap_model=model_recap,
             draft_only=draft_only,
             progress_callback=progress_callback,
             checkpoint_callback=save_day_checkpoint,
@@ -277,7 +295,7 @@ def main(seed_value: int = DEFAULT_SEED_VALUE, model: Optional[str] = None):
         print(f"  Rerun with --seed {seed_value} to resume from the last completed day.")
         mlx.release_loaded_model()
         return None
-    metadata["model_story"] = resolved_model
+    metadata["model_story"] = model_story
     stage_complete("Story generation", story_start)
     print(f"\nStory generated ({len(story):,} chars, "
           f"{len(story.split()):,} words) in "
@@ -310,10 +328,10 @@ def main(seed_value: int = DEFAULT_SEED_VALUE, model: Optional[str] = None):
 
     banner_result = prompt_gen.generate_banner_prompt(
         metadata=metadata,
-        model=resolved_model,
+        model=model_visual,
         temperature=0.7,
     )
-    metadata["model_banner"] = resolved_model
+    metadata["model_banner"] = model_visual
     stage_complete("Banner prompt", banner_start)
     print(f"  Banner prompt generated in "
           f"{time.perf_counter() - banner_start:.1f}s")
@@ -336,7 +354,7 @@ def main(seed_value: int = DEFAULT_SEED_VALUE, model: Optional[str] = None):
             day_number=ch["day"],
             chapter_index=ch["chapter_index"],
             chapter_title=ch["chapter_title"],
-            model=resolved_model,
+            model=model_visual,
             temperature=0.7,
         )
         result["day"] = ch["day"]
@@ -345,7 +363,7 @@ def main(seed_value: int = DEFAULT_SEED_VALUE, model: Optional[str] = None):
         chapter_prompts.append(result)
         elapsed = time.perf_counter() - chap_start
         print(f"done ({elapsed:.1f}s)")
-    metadata["model_chapters"] = resolved_model
+    metadata["model_chapters"] = model_visual
     stage_complete("Chapter prompts", chapter_prompts_start)
 
     # ── 8. Assemble prompts payload ──────────────────────────────────────
@@ -397,6 +415,10 @@ def main(seed_value: int = DEFAULT_SEED_VALUE, model: Optional[str] = None):
     print(f"  Seed value:    {seed['seed']}")
     print(f"  Days:          {seed['num_days']}")
     print(f"  Model:         {resolved_model}")
+    if len({model_outline, model_story, model_recap, model_visual}) > 1:
+        print(f"  Stage models:  outline={model_outline}")
+        print(f"                 story={model_story} recap={model_recap}")
+        print(f"                 visual={model_visual}")
     print(f"  Total words:   {total_words:,}")
     print(f"  Target words:  {total_target:,}")
     print(f"  Word ratio:    {ratio:.2f}x")
@@ -443,12 +465,35 @@ if __name__ == "__main__":
         help="MLX model to use for generation (default: auto-detect)",
     )
     parser.add_argument(
+        "--outline-model", type=str, default=None,
+        help="Model for outline planning (overrides GRAVEDANCER_MODEL_OUTLINE)",
+    )
+    parser.add_argument(
+        "--story-model", type=str, default=None,
+        help="Model for prose expansion (overrides GRAVEDANCER_MODEL_STORY)",
+    )
+    parser.add_argument(
+        "--recap-model", type=str, default=None,
+        help="Model for per-day continuity recaps (overrides GRAVEDANCER_MODEL_RECAP)",
+    )
+    parser.add_argument(
+        "--visual-model", type=str, default=None,
+        help="Model for banner/chapter visual prompts (overrides GRAVEDANCER_MODEL_VISUAL)",
+    )
+    parser.add_argument(
         "--run-token", type=str, default="",
         help="Unique token remote stops match on; not used programmatically.",
     )
     args = parser.parse_args()
     try:
-        result = main(seed_value=args.seed, model=args.model)
+        result = main(
+        seed_value=args.seed,
+        model=args.model,
+        outline_model=args.outline_model,
+        story_model=args.story_model,
+        recap_model=args.recap_model,
+        visual_model=args.visual_model,
+    )
     except GenerationCancelled as exc:
         print(f"\n⚠ Cancelled before a checkpoint existed: {exc}")
         sys.exit(130)
