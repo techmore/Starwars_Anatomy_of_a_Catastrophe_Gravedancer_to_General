@@ -34,6 +34,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional
 
+from rich.text import Text
 from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -190,6 +191,14 @@ _ANSI_RE = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]|\x1b\][^\x07]*\x07|\x1b\][^\x07]*
 _METER_RE = re.compile(r"\|\s*~[\d,]+ tokens|\belapsed\b")
 
 _STATUS_SYMBOLS = {"running": "▶", "finished": "✓", "stopped": "■", "error": "✗"}
+# Row colors mirror the runs-header palette so status reads at a glance.
+_STATUS_STYLES = {
+    "running": "bold green",
+    "stopping": "yellow",
+    "finished": "green",
+    "stopped": "bright_black",
+    "error": "red",
+}
 
 
 @dataclass
@@ -1198,10 +1207,11 @@ class GravedancerTUI(App):
         self.runs[record.run_id] = record
         self.run_order.append(record.run_id)
         self._stop_requested[record.run_id] = False
+        self._upsert_run_option(record)
         self._select_run(record.run_id)
         self.query_one("#stop", Button).disabled = False
 
-    def _run_label(self, record: RunRecord) -> str:
+    def _run_label(self, record: RunRecord) -> "Text":
         symbol = _STATUS_SYMBOLS.get(record.status, "·")
         label = record.label
         if record.status == "running":
@@ -1217,18 +1227,37 @@ class GravedancerTUI(App):
             suffix = f"  [{_progress_bar(record.progress.pct)}] {record.progress.pct:.0f}%"
             if record.status == "error" and record.error_tail:
                 suffix += f" · {record.error_tail}"
-        return f"{symbol} {label}  [{dur:6.0f}s]{suffix}"
+        # Text (not markup): literal "[  12s]" brackets must stay literal.
+        return Text(
+            f"{symbol} {label}  [{dur:6.0f}s]{suffix}",
+            style=_STATUS_STYLES.get(record.status, ""),
+        )
+
+    def _upsert_run_option(self, record: RunRecord) -> None:
+        """Add the run's row on first sight; refresh its styled label afterwards.
+
+        The row is created here because nothing else inserts options into the
+        #runs list — replace-only silently dropped every new run.
+        """
+        try:
+            runs = self.query_one("#runs", OptionList)
+        except Exception:
+            return
+        label = self._run_label(record)
+        try:
+            runs.replace_option_prompt(record.run_id, label)
+        except Exception:
+            try:
+                runs.add_option(Option(label, id=record.run_id))
+            except Exception:
+                pass
 
     def _tick_runs(self) -> None:
-        runs = self.query_one("#runs", OptionList)
         for run_id in self.run_order:
             record = self.runs.get(run_id)
             if record is None:
                 continue
-            try:
-                runs.replace_option_prompt(run_id, self._run_label(record))
-            except Exception:
-                pass
+            self._upsert_run_option(record)
         self._update_runs_header()
         self._flush_state()
         self._render_progress_panel()
@@ -1311,6 +1340,14 @@ class GravedancerTUI(App):
         record = self.runs.get(run_id)
         if record is None:
             return
+        try:
+            runs = self.query_one("#runs", OptionList)
+            for index, option in enumerate(runs.options):
+                if getattr(option, "id", None) == run_id:
+                    runs.highlighted = index
+                    break
+        except Exception:
+            pass
         log = self.query_one("#log", RichLog)
         log.clear()
         for line in record.lines:

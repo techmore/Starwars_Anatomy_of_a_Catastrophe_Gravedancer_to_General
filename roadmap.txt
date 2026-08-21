@@ -1,6 +1,6 @@
 ════════════════════════════════════════════════════════════════════
   GRAVEDANCER → GENERAL — ROADMAP
-  Updated: 2026-08-21 · Suite: 172/172 · Committed through d6ee0aa
+  Updated: 2026-08-21 · Suite: 193/193 · All work committed
 ════════════════════════════════════════════════════════════════════
 
 WHAT THE APP IS
@@ -95,19 +95,29 @@ ROADMAP (priority order)
    GRAVEDANCER_SECTION_TAIL_CHARS (default 1800, TUI forces 4000 hosted).
    Recap failure degrades gracefully to tail-only continuity.
 
-3. PER-DAY MODEL ROUTING
-   We already route per-run. Next: per-stage models (outline on strongest
-   plot model, prose on best writer, visual prompts on cheap/fast) — the
-   research consistently shows split-workflow beats single-model.
+3. PER-DAY MODEL ROUTING                                   [done 2026-08-21]
+   Shipped: per-stage routing for outline/story/recap/visual. Precedence
+   per stage: CLI flag (--outline-model etc.) > GRAVEDANCER_MODEL_<STAGE>
+   env > the run's main model. Per-stage models are recorded in episode
+   metadata; recaps and visual prompts can run on a cheap fast tier.
 
-4. SERIES MEMORY (multi-episode)
-   Episode n+1 should know episode n: auto-generate a series bible entry
-   (characters, injuries, artifacts, unresolved threads) into
-   episodes/series-bible.json and inject into concept/outline prompts.
+4. SERIES MEMORY (multi-episode)                           [done 2026-08-21]
+   Shipped: episodes/series-bible.json accumulates one JSON entry per
+   completed episode (jedi fate, injuries, artifacts, unresolved threads).
+   Recorded automatically after save (recap-tier model; non-fatal on
+   failure). A capped digest (~4000 chars, newest 8) is injected into
+   outline + section prompts (CLI additional_instructions) and into the
+   concept context prompt (Streamlit), with "do not contradict / continue
+   threads" instructions.
 
-5. TUI POLISH BACKLOG (docs/tui-ux-audit.md #10, #14 leftovers)
-   Two-line run rows for narrow terminals; surface last-error in row done,
-   but consider color-coding rows by status.
+5. TUI POLISH BACKLOG                                      [done 2026-08-21]
+   Status-colored run rows (running=bold green, stopping=yellow,
+   finished=green, stopped=dim, error=red) mirroring the header palette.
+   Fixed latent v2 bug: run rows were never ADDED to #runs — only replaced
+   (silently swallowed), so the list stayed empty while the progress panel
+   worked. Selecting a run now highlights its row. Two-line rows for
+   narrow terminals remain descoped (running rows already collapse to a
+   compact label).
 
 6. LOCAL EXPERIMENTS (optional)
    • rapid-mlx --speculative-config with the MTP checkpoint you already have
@@ -151,9 +161,14 @@ ENV / COMMAND CHEAT SHEET
   python tui.py                     # the launcher (V viewer · B browser ·
                                     # P progress · N random seed · Q quit)
   python run_creative_pipeline.py --seed N [--model REF]
+    --outline-model REF             # per-stage overrides; env equivalents:
+    --story-model REF               #   GRAVEDANCER_MODEL_OUTLINE
+    --recap-model REF               #   GRAVEDANCER_MODEL_STORY / _RECAP
+    --visual-model REF              #   GRAVEDANCER_MODEL_VISUAL
   python scripts/run_oxalpha_pipeline.py            # scripted ox-alpha demo
   python scripts/benchmark_model.py --model REF --max-tokens 256
   refs: "lmstudio:<id>" (any HTTP) · "opencode:<id>" · bare id = native MLX
+  series bible: episodes/series-bible.json (auto-updated after each episode)
   state file: ~/.gravedancer/tui-state.json
   server logs: log/rapid-mlx-*.log
 ════════════════════════════════════════════════════════════════════

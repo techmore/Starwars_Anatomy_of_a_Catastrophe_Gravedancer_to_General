@@ -84,6 +84,53 @@ class TestRunProgress(unittest.TestCase):
         self.assertEqual(_progress_bar(50), "█" * 5 + "░" * 5)
 
 
+class TestRunRowLabels(unittest.TestCase):
+    """Run-row labels: styled by status, literal brackets preserved."""
+
+    @staticmethod
+    def _record(status: str = "running", error_tail: str = ""):
+        from tui import RunRecord
+
+        record = RunRecord(
+            run_id="run-1",
+            label="local · rapid-mlx · qwen · s42",
+            local=True,
+            seed=42,
+            started=0.0,
+        )
+        record.status = status
+        record.error_tail = error_tail
+        return record
+
+    def _label_text(self, record):
+        from tui import GravedancerTUI
+
+        app = object.__new__(GravedancerTUI)
+        return app._run_label(record)
+
+    def test_running_label_is_green_and_compact(self):
+        text = self._label_text(self._record("running"))
+        self.assertIn("▶", str(text))
+        self.assertEqual(text.style, "bold green")
+
+    def test_error_label_is_red_and_carries_tail(self):
+        text = self._label_text(self._record("error", error_tail="no output for 601s"))
+        self.assertIn("✗", str(text))
+        self.assertIn("no output for 601s", str(text))
+        self.assertEqual(text.style, "red")
+
+    def test_finished_and_stopped_styles(self):
+        self.assertEqual(self._label_text(self._record("finished")).style, "green")
+        self.assertEqual(self._label_text(self._record("stopped")).style, "bright_black")
+
+    def test_literal_duration_brackets_survive(self):
+        # Labels are Text objects, so "[   12s]" must not be parsed as markup.
+        text = self._label_text(self._record("stopped"))
+        import re as _re
+
+        self.assertRegex(str(text), r"\[\s*\d+s\]")
+
+
 class TestRunProgressTree(unittest.TestCase):
     def feed(self, lines):
         p = RunProgress()
