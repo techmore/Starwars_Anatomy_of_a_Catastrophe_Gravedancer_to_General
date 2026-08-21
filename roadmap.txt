@@ -1,6 +1,6 @@
 ════════════════════════════════════════════════════════════════════
   GRAVEDANCER → GENERAL — ROADMAP
-  Updated: 2026-08-21 · Suite: 171/171 · story-together landed (uncommitted)
+  Updated: 2026-08-21 · Suite: 172/172 · Committed through d6ee0aa
 ════════════════════════════════════════════════════════════════════
 
 WHAT THE APP IS
@@ -76,11 +76,17 @@ production runs use gpt-5.6-luna (~$0.40/episode) — fast and reliable.
 ────────────────────────────────────────────────────────────────────
 ROADMAP (priority order)
 ────────────────────────────────────────────────────────────────────
-1. VALIDATE LUNA END-TO-END                                    [next up]
-   Run one full episode on opencode-go/gpt-5.6-luna at production length
-   (~45k tok/day). Confirms cost estimate (~$0.40), watches for mid-run
-   rate limits, and gives a quality baseline vs The Ashen Chain demo.
-   Now also the first quality test of story-so-far continuity.
+1. VALIDATE LUNA END-TO-END                             [on hold 2026-08-21]
+   DECISION: hosted validation only via ox-alpha-free; luna/local descoped.
+   ox-alpha-free measured at production scale and it cannot: the real outline
+   prompt (3.3k chars) drives `opencode run` into a 5-step agent tool-loop
+   (~18k injected context tokens/step, 432 output tokens) with ZERO visible
+   text — outline returns empty. --agent plan stalls >6 min. Small prompts
+   answer fine, so smoke-scale works; production length does not.
+   Evidence: log/oxalpha-free-validation-seed42.log
+   Revisit if the free tier improves or the $10 workspace limit is raised
+   (luna command preserved in KNOWN ISSUES below). Story-together (#2) is
+   already covered by 12 unit tests; live validation deferred indefinitely.
 
 2. STORY-TOGETHER UPGRADE (pipeline-side continuity)        [done 2026-08-21]
    Shipped: generate_day_recap() at each day boundary (temp 0.2, ≤700 tok),
@@ -115,13 +121,17 @@ ROADMAP (priority order)
 
 KNOWN ISSUES / WATCH ITEMS
 --------------------------
-• BLOCKED (2026-08-21): luna validation run (#1) — OpenCode workspace hit its
-  $10 monthly spending limit (MonthlyLimitError). Raise the limit at
-  opencode.ai/workspace/.../billing or wait for reset; rerun:
+• ON HOLD (2026-08-21, per decision): hosted production validation runs are
+  descoped unless ox-alpha-free can handle them — it cannot at production
+  length (see ROADMAP #1 for measurements). If limits ever get raised and a
+  luna run is wanted:
     GRAVEDANCER_SECTION_MAX_TOKENS=12000 GRAVEDANCER_SECTION_TAIL_CHARS=4000 \
     venv/bin/python run_creative_pipeline.py --seed 42 \
       --model opencode:opencode-go/gpt-5.6-luna 2>&1 | tee log/luna-validation-seed42.log
   (seed 42 = The Ashen Chain → direct quality comparison vs the v3 demo)
+• ox-alpha-free quirk: `opencode run` injects ~17-18k context tokens even for
+  tiny prompts; at outline-prompt size the model tool-loops and emits no text.
+  Free tier is smoke-scale only.
 • OpenCode CLI emits API errors as JSON on STDOUT; mlx_client now parses
   error events and surfaces the real message instead of "OpenCode run failed".
 • Free-tier OpenCode endpoints stall under sustained volume — watchdog now
