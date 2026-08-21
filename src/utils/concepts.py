@@ -95,16 +95,24 @@ def _strip_markdown(value: str) -> str:
     return value.strip()
 
 
-def build_concept_context_prompt(used_names: List[str]) -> str:
+def build_concept_context_prompt(used_names: List[str], series_context: str = "") -> str:
     """Build a free-form concept generation prompt (creative context pass).
 
     The LLM should write a vivid, natural-language episode concept with no
     structural constraints — just good creative writing.  A separate extraction
     pass will parse the structured fields from whatever the model produces.
+    *series_context* carries rendered series-bible digests of earlier episodes
+    so the new concept continues the series instead of ignoring it.
     """
     used = ""
     if used_names:
         used = f"\n- Avoid Jedi already used in previous episodes: {', '.join(used_names)}"
+    series = ""
+    if series_context.strip():
+        series = (
+            "\n\nSeries continuity — earlier episodes (build on or deliberately "
+            f"advance these; do not contradict them):\n{series_context.strip()}\n"
+        )
     return f"""Create one episode concept for "Gravedancer to General: Anatomy of a Catastrophe".
 
 Story constraints:
@@ -116,7 +124,7 @@ Story constraints:
 Cover these elements in your description:
 - A unique Jedi (name, species, rank, lightsaber, personality, fighting style) with their own philosophy and reason for being in Qymaen's way
 - A memorable setting with tactical and atmospheric weight
-- The tone — what kind of episode this will be (combat, horror, pursuit, intrigue, etc.){used}
+- The tone — what kind of episode this will be (combat, horror, pursuit, intrigue, etc.){used}{series}
 
 Write 2-4 paragraphs. Be vivid, specific, and cinematic. No formatting, no lists — just prose."""
 

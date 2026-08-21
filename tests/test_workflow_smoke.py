@@ -421,6 +421,16 @@ A single day hunt.
         self.assertIn("Gravedancer to General", prompt)
         self.assertNotIn("Avoid Jedi already used", prompt)
 
+    def test_concept_context_prompt_includes_series_continuity(self):
+        prompt = build_concept_context_prompt(
+            ["Alpha", "Beta"],
+            series_context='- Episode "The Ashen Chain"\n  Jedi: Nyx Vex — escaped',
+        )
+
+        self.assertIn("Series continuity — earlier episodes", prompt)
+        self.assertIn("The Ashen Chain", prompt)
+        self.assertIn("Nyx Vex", prompt)
+
     def test_concept_extraction_prompt_includes_concept_text_and_tones(self):
         prompt = build_concept_extraction_prompt("Jedi Vex'arii defends a temple")
 

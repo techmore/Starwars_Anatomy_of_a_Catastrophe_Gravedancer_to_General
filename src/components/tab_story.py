@@ -15,6 +15,7 @@ from src.utils.concepts import (
     _strip_context_reasoning,
     VALID_TONES,
 )
+from src.utils.series_bible import format_for_prompt as format_bible_for_prompt, load_entries as load_bible_entries
 from src.utils.logging_utils import get_logger, start_new_run_log, write_debug_artifact
 from src.components.pipeline_timeline import render_pipeline_timeline, PipelineTracker, _fmt_duration as _fmt_total
 from src.components.ui import preformatted_html
@@ -203,7 +204,10 @@ def _run_concept_then_generate(mlx, model, storage):
             tracker.start("concept")
             render_pipeline_timeline("concept", tracker=tracker, widget=timeline_widget)
             progress.info("Writing the episode context...")
-            context_prompt = build_concept_context_prompt(used_names)
+            context_prompt = build_concept_context_prompt(
+                used_names,
+                series_context=format_bible_for_prompt(load_bible_entries(storage.base_path)),
+            )
             context_chunks = []
             context_response = ""
             for chunk in mlx.generate_stream(

@@ -25,6 +25,13 @@ from src.utils.storage import EpisodeStorage
 from src.utils.prompt_generator import PromptGenerator
 from src.utils.prompt_schema import TARGET_WORDS_PER_DAY
 from src.utils.settings import SETTINGS, stage_model
+from src.utils.series_bible import (
+    build_entry_prompt,
+    format_for_prompt,
+    load_entries as load_bible_entries,
+    parse_entry as parse_bible_entry,
+    update_entry as update_bible_entry,
+)
 
 try:
     from rich.console import Console
@@ -207,6 +214,18 @@ def main(
         f"to ensure maximum variety. The LLM's role is to expand "
         f"these seeds into coherent prose."
     )
+
+    # ── Series memory: earlier episodes inform this one ──────────────────
+    bible_entries = load_bible_entries(SETTINGS.storage_path)
+    series_context = format_for_prompt(bible_entries)
+    if series_context:
+        additional_instructions += (
+            "\n\n**SERIES BIBLE — earlier episodes.** Do not contradict these "
+            "facts; do not reuse a Jedi whose fate is already recorded; "
+            "unresolved threads may continue here:\n"
+            f"{series_context}"
+        )
+        print(f"Series bible loaded ({len(bible_entries)} earlier episode(s)).")
 
     # ── 3. Generate outline ──────────────────────────────────────────────
     print(f"\n{'='*72}")
@@ -402,6 +421,28 @@ def main(
     stage_complete("Save episode", save_start)
     print(f"  Episode saved: {episode_id}")
     print(f"  Location: episodes/{episode_id}/")
+
+    # ── Series memory: record this episode for future ones ───────────────
+    print("\nUpdating series bible...")
+    bible_start = time.perf_counter()
+    try:
+        raw_entry = mlx.generate(
+            model=model_recap,
+            prompt=build_entry_prompt(seed["title"], story),
+            system="You are a continuity clerk. You answer with exactly the requested JSON and nothing else.",
+            temperature=0.2,
+            max_tokens=1200,
+        )
+        entry = parse_bible_entry(raw_entry)
+        if entry is None:
+            print("  Series bible entry skipped (model returned no usable JSON).")
+        else:
+            path = update_bible_entry(SETTINGS.storage_path, entry)
+            stage_complete("Series bible", bible_start)
+            print(f"  Series bible updated: {path}")
+    except Exception as exc:  # non-fatal: an episode must never fail at bookkeeping
+        LOGGER.warning("series bible update failed error=%s", exc)
+        print(f"  Series bible update failed (non-fatal): {exc}")
 
     # ── 10. Summary ──────────────────────────────────────────────────────
     total_words = len(story.split())
