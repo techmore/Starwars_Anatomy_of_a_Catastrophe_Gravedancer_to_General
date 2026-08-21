@@ -933,6 +933,7 @@ class GravedancerTUI(App):
                 choices = []
                 routes: Dict[str, Dict[str, str]] = {}
                 multiple = len({e["base"] for e in entries}) > 1
+                served_ids: set = set()
                 for entry in entries:
                     label = entry["id"]
                     if multiple:
@@ -940,8 +941,26 @@ class GravedancerTUI(App):
                         label = f"{entry['id']} @{hostport}"
                     choices.append(label)
                     routes[label] = entry
+                    served_ids.add(entry["id"])
+                # Locally downloaded checkpoints that no live server is
+                # serving still belong in the list: selecting one routes to
+                # the default endpoint and load-on-run starts its server.
+                fallback_base = base or harness.all_bases()[0] if harness.all_bases() else None
+                for name in harness_mod.list_local_model_dirs():
+                    if name in served_ids:
+                        continue
+                    label = f"{name} (on disk)"
+                    choices.append(label)
+                    if fallback_base:
+                        routes[label] = {"base": fallback_base, "id": name}
                 self._model_routes = routes
-                self.call_from_thread(self._apply_model_choices, choices)
+                served_count = len(served_ids)
+                disk_count = len(choices) - served_count
+                summary = (
+                    f"{len(choices)} model(s) on {harness.name}"
+                    + (f" ({served_count} served, {disk_count} on disk)" if disk_count else "")
+                )
+                self.call_from_thread(self._apply_model_choices, choices, summary)
                 return
             choices = harness_mod.list_model_choices(harness, base)
         except Exception as exc:
@@ -951,7 +970,7 @@ class GravedancerTUI(App):
             return
         self.call_from_thread(self._apply_model_choices, choices)
 
-    def _apply_model_choices(self, choices: List[str]) -> None:
+    def _apply_model_choices(self, choices: List[str], summary: str = "") -> None:
         model_list = self.query_one("#models", OptionList)
         model_list.clear_options()
         for label in choices:
@@ -966,7 +985,9 @@ class GravedancerTUI(App):
                         break
             model_list.highlighted = restore_index
             self.selected_model = str(choices[restore_index])
-        self._set_status(f"{len(choices)} model(s) on {self.harness.name if self.harness else '?'}")
+        self._set_status(
+            summary or f"{len(choices)} model(s) on {self.harness.name if self.harness else '?'}"
+        )
 
     def action_refresh_models(self) -> None:
         self._load_models()
