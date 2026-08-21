@@ -69,6 +69,25 @@ class TestOpenCodeSpawnRetry(unittest.TestCase):
                 list(client._generate_opencode_stream(
                     "opencode:x", "prompt", "system", max_tokens=16))
 
+    def test_nonzero_exit_surfaces_stdout_error_event(self):
+        """The CLI reports API failures (billing, auth) on stdout, not stderr."""
+
+        class FakeProc:
+            def __init__(self):
+                self.stdout = iter([
+                    '{"type":"error","error":{"data":{"message":'
+                    '"Your workspace has reached its monthly spending limit of $10"}}}',
+                ])
+                self.stderr = Mock(read=Mock(return_value=""))
+                self.wait = Mock(return_value=1)
+                self.poll = Mock(return_value=1)
+
+        client = MLXClient()
+        with patch("src.utils.mlx_client.subprocess.Popen", return_value=FakeProc()):
+            with self.assertRaisesRegex(RuntimeError, "monthly spending limit"):
+                list(client._generate_opencode_stream(
+                    "opencode:x", "prompt", "system", max_tokens=16))
+
 
 if __name__ == "__main__":
     unittest.main()

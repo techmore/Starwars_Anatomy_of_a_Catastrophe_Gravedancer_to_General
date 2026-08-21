@@ -308,12 +308,26 @@ class MLXClient:
             daemon=True,
         )
         stderr_thread.start()
+        error_events: List[str] = []
         try:
             for line in proc.stdout:
                 watch["last"] = time.monotonic()
                 try:
                     event = json.loads(line)
                 except json.JSONDecodeError:
+                    continue
+                if event.get("type") == "error":
+                    # The CLI reports API/auth failures (e.g. MonthlyLimitError)
+                    # as JSON events on stdout, never on stderr; without this
+                    # the raised error is just "OpenCode run failed".
+                    err = event.get("error")
+                    message = ""
+                    if isinstance(err, dict):
+                        data = err.get("data")
+                        if isinstance(data, dict) and data.get("message"):
+                            message = str(data["message"])
+                        message = message or str(err.get("message") or "")
+                    error_events.append(message or line.strip()[:500])
                     continue
                 text = event.get("text")
                 if text is None and isinstance(event.get("part"), dict):
@@ -328,7 +342,8 @@ class MLXClient:
                     "long runs."
                 )
             if return_code != 0:
-                raise RuntimeError("".join(stderr_chunks)[-2000:] or "OpenCode run failed")
+                detail = "; ".join(m for m in error_events if m) + "".join(stderr_chunks)
+                raise RuntimeError(detail[-2000:] or "OpenCode run failed")
         finally:
             self._reap_stream_process(proc)
             stderr_thread.join(timeout=2)

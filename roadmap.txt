@@ -115,6 +115,15 @@ ROADMAP (priority order)
 
 KNOWN ISSUES / WATCH ITEMS
 --------------------------
+• BLOCKED (2026-08-21): luna validation run (#1) — OpenCode workspace hit its
+  $10 monthly spending limit (MonthlyLimitError). Raise the limit at
+  opencode.ai/workspace/.../billing or wait for reset; rerun:
+    GRAVEDANCER_SECTION_MAX_TOKENS=12000 GRAVEDANCER_SECTION_TAIL_CHARS=4000 \
+    venv/bin/python run_creative_pipeline.py --seed 42 \
+      --model opencode:opencode-go/gpt-5.6-luna 2>&1 | tee log/luna-validation-seed42.log
+  (seed 42 = The Ashen Chain → direct quality comparison vs the v3 demo)
+• OpenCode CLI emits API errors as JSON on STDOUT; mlx_client now parses
+  error events and surfaces the real message instead of "OpenCode run failed".
 • Free-tier OpenCode endpoints stall under sustained volume — watchdog now
   converts this to an error in ≤10 min, but production runs should use paid
   cheap models (luna).
