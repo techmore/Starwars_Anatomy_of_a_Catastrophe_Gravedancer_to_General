@@ -1,6 +1,6 @@
 ════════════════════════════════════════════════════════════════════
   GRAVEDANCER → GENERAL — ROADMAP
-  Updated: 2026-08-21 · Suite: 196/196 · ruff clean · All work committed
+  Updated: 2026-08-21 · Suite: 198/198 · ruff clean · All work committed
 ════════════════════════════════════════════════════════════════════
 
 WHAT THE APP IS
@@ -100,6 +100,8 @@ ROADMAP (priority order)
    per stage: CLI flag (--outline-model etc.) > GRAVEDANCER_MODEL_<STAGE>
    env > the run's main model. Per-stage models are recorded in episode
    metadata; recaps and visual prompts can run on a cheap fast tier.
+   TUI: collapsible "Stage model overrides" panel persists values and
+   routes them (env) into both local and remote runs.
 
 4. SERIES MEMORY (multi-episode)                           [done 2026-08-21]
    Shipped: episodes/series-bible.json accumulates one JSON entry per

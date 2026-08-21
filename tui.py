@@ -245,6 +245,16 @@ def _progress_bar(pct: float, width: int = 10) -> str:
     return "█" * filled + "░" * (width - filled)
 
 
+def _stage_model_env(outline: str = "", story: str = "", recap: str = "", visual: str = "") -> dict[str, str]:
+    """Env additions routing pipeline stages; blanks inherit the run model."""
+    values = {"OUTLINE": outline, "STORY": story, "RECAP": recap, "VISUAL": visual}
+    return {
+        f"GRAVEDANCER_MODEL_{key}": value.strip()
+        for key, value in values.items()
+        if value.strip()
+    }
+
+
 class RunProgress:
     """Derive live completion %, stage tree, and token counts from pipeline output.
 
@@ -758,6 +768,9 @@ class GravedancerTUI(App):
     #remote-box {
         margin-top: 1;
     }
+    #stage-box {
+        margin-top: 1;
+    }
     .remote-header {
         height: auto;
     }
@@ -862,6 +875,14 @@ class GravedancerTUI(App):
                     id="custom-url",
                 )
                 with Horizontal(classes="remote-header"):
+                    yield Static("Stage model overrides", classes="section")
+                    yield Button("▸ show", id="toggle-stage", variant="default")
+                with Vertical(id="stage-box"):
+                    yield Input(placeholder="Outline model (blank = run model)", id="stage-outline")
+                    yield Input(placeholder="Story model (blank = run model)", id="stage-story")
+                    yield Input(placeholder="Recap model (blank = story model)", id="stage-recap")
+                    yield Input(placeholder="Visual prompts model (blank = run model)", id="stage-visual")
+                with Horizontal(classes="remote-header"):
                     yield Static("4 · Remote target (SSH)", classes="section")
                     yield Button("▾ hide", id="toggle-remote", variant="default")
                 with Vertical(id="remote-box"):
@@ -904,6 +925,16 @@ class GravedancerTUI(App):
         saved_url = str(state.get("base_url", "")).strip()
         if saved_url:
             self.query_one("#custom-url", Input).value = saved_url
+        # Stage-model overrides: restore saved values; open the box when any
+        # override is set (or it was left open last session).
+        saved_stage = state.get("stage_models") or {}
+        for stage in ("outline", "story", "recap", "visual"):
+            value = str(saved_stage.get(stage, "")).strip()
+            if value:
+                self.query_one(f"#stage-{stage}", Input).value = value
+        stage_has_values = any(self._stage_value(s) for s in ("outline", "story", "recap", "visual"))
+        if not (state.get("stage_open") or stage_has_values):
+            self._set_stage_box_visible(False)
         # Remote section starts collapsed unless it was open (or a host is set).
         if not (state.get("remote_open") or str(state.get("remote_host", "")).strip()):
             self._set_remote_box_visible(False)
@@ -990,12 +1021,30 @@ class GravedancerTUI(App):
             self._persist(base_url=event.value.strip())
         elif event.input.id == "remote-host":
             self._persist(remote_host=event.value.strip())
+        elif event.input.id and event.input.id.startswith("stage-"):
+            stage = event.input.id.removeprefix("stage-")
+            overrides = dict(self._state.get("stage_models") or {})
+            overrides[stage] = event.value.strip()
+            self._persist(stage_models=overrides)
 
     def _set_remote_box_visible(self, visible: bool) -> None:
         self.query_one("#remote-box", Vertical).display = visible
         button = self.query_one("#toggle-remote", Button)
         button.label = "▾ hide" if visible else "▸ show"
         self._persist(remote_open=visible)
+
+    def _stage_value(self, stage: str) -> str:
+        """Stripped stage-model override from the UI ("" = inherit run model)."""
+        try:
+            return str(self.query_one(f"#stage-{stage}", Input).value).strip()
+        except Exception:
+            return ""
+
+    def _set_stage_box_visible(self, visible: bool) -> None:
+        self.query_one("#stage-box", Vertical).display = visible
+        button = self.query_one("#toggle-stage", Button)
+        button.label = "▾ hide" if visible else "▸ show"
+        self._persist(stage_open=visible)
 
     def action_random_seed(self) -> None:
         seed_value = random.randint(1, 99999)
@@ -1448,6 +1497,12 @@ class GravedancerTUI(App):
         env = os.environ.copy()
         env.update(harness_mod.pipeline_environment(harness, route_base or self._current_base()))
         env["GRAVEDANCER_MODEL"] = ref
+        env.update(_stage_model_env(
+            outline=self._stage_value("outline"),
+            story=self._stage_value("story"),
+            recap=self._stage_value("recap"),
+            visual=self._stage_value("visual"),
+        ))
         if harness.kind == "opencode_cli":
             # Hosted models are not memory-bound: raise the per-section cap so
             # a 5-chapter day can reach the ~45k-token daily target instead of
@@ -1586,6 +1641,12 @@ class GravedancerTUI(App):
             return
         ref = f"lmstudio:{model}"
         extra_env = {"MODEL_REF": ref}
+        extra_env.update(_stage_model_env(
+            outline=self._stage_value("outline"),
+            story=self._stage_value("story"),
+            recap=self._stage_value("recap"),
+            visual=self._stage_value("visual"),
+        ))
         run_token = uuid.uuid4().hex[:12]
         proc = remoter_mod.start_remote(target, extra_env, str(seed), run_token=run_token)
         record = RunRecord(
@@ -1762,6 +1823,9 @@ class GravedancerTUI(App):
         elif button_id == "toggle-remote":
             box = self.query_one("#remote-box", Vertical)
             self._set_remote_box_visible(not box.display)
+        elif button_id == "toggle-stage":
+            box = self.query_one("#stage-box", Vertical)
+            self._set_stage_box_visible(not box.display)
 
     # ── quit guard ───────────────────────────────────────────────────────
 

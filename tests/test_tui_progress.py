@@ -128,6 +128,24 @@ class TestRunRowLabels(unittest.TestCase):
         self.assertRegex(str(text), r"\[\s*\d+s\]")
 
 
+class TestStageModelEnv(unittest.TestCase):
+    def test_blanks_inherit_run_model(self):
+        from tui import _stage_model_env
+
+        self.assertEqual(_stage_model_env(), {})
+        self.assertEqual(_stage_model_env(outline="  ", story=""), {})
+
+    def test_non_blank_stages_route_as_env(self):
+        from tui import _stage_model_env
+
+        env = _stage_model_env(outline=" planner ", story="writer", visual="cheap")
+        self.assertEqual(env, {
+            "GRAVEDANCER_MODEL_OUTLINE": "planner",
+            "GRAVEDANCER_MODEL_STORY": "writer",
+            "GRAVEDANCER_MODEL_VISUAL": "cheap",
+        })
+
+
 class TestRunProgressTree(unittest.TestCase):
     def feed(self, lines):
         p = RunProgress()
