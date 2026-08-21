@@ -69,7 +69,9 @@ def _configure_local_model_mode() -> bool:
     return True
 
 
-LOCAL_MODEL_MODE = _configure_local_model_mode()
+# Offline-by-default guard: sets HF_HUB_OFFLINE/TRANSFORMERS_OFFLINE unless
+# downloads are explicitly enabled. Call for its side effect at import time.
+_configure_local_model_mode()
 
 _OPTIQ_REGISTERED = False
 
@@ -371,41 +373,6 @@ class MLXClient:
         except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, OSError) as exc:
             return {"available": False, "model_loaded": False, "models": [], "error": str(exc)}
 
-    def _generate_lmstudio(self, model: str, prompt: str, system: str | None,
-                           temperature: float, top_p: float, max_tokens: int) -> str:
-        """Call an OpenAI-compatible local LM Studio server."""
-        messages = []
-        if system:
-            messages.append({"role": "system", "content": system})
-        messages.append({"role": "user", "content": self._lmstudio_prompt(prompt)})
-        payload = json.dumps({
-            "model": self._lmstudio_model_id(model),
-            "messages": messages,
-            "temperature": temperature,
-            "top_p": top_p,
-            "max_tokens": min(max_tokens, LMSTUDIO_MAX_TOKENS),
-            "stream": False,
-            "reasoning_effort": "none",
-            # Qwen 3.8 exposes this LM Studio chat-template option. The
-            # production prompts already contain explicit planning steps;
-            # hidden reasoning here only consumes the output budget.
-            "chat_template_kwargs": {"enable_thinking": False},
-        }).encode("utf-8")
-        request = urllib.request.Request(
-            lmstudio_api_url(), data=payload,
-            headers={"Content-Type": "application/json"}, method="POST",
-        )
-        try:
-            with _urlopen_with_retries(request, timeout=max(180, max_tokens // 2)) as response:
-                data = json.loads(response.read().decode("utf-8"))
-        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
-            raise RuntimeError(f"LM Studio request failed: {exc}") from exc
-        try:
-            choice = data["choices"][0]
-            content = choice["message"].get("content") or ""
-        except (KeyError, IndexError, TypeError) as exc:
-            raise RuntimeError(f"LM Studio returned an unexpected response: {data}") from exc
-        return _strip_think_blocks(content).strip()
 
     def _generate_lmstudio_stream(
         self, model: str, prompt: str, system: str | None,

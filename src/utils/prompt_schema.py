@@ -25,33 +25,14 @@ TOKENS_PER_WORD_ESTIMATE = 1.3
 TARGET_WORDS_PER_DAY = round(DAILY_TARGET_TOKENS / TOKENS_PER_WORD_ESTIMATE)
 CHAPTERS_PER_DAY = 10
 MIN_CHAPTERS_PER_DAY = 5
-DEFAULT_DAY_COUNT = 5
 CONCEPT_MIN_DAYS = 3
 CONCEPT_MAX_DAYS = 8
-
-# Concept schema
-CONCEPT_OUTPUT_FIELDS = [
-    "TITLE",
-    "DAYS",
-    "SETTING",
-    "JEDI_NAME",
-    "JEDI_SPECIES",
-    "JEDI_RANK",
-    "JEDI_SABER",
-    "JEDI_PERSONALITY",
-    "JEDI_TARGET",
-    "TONE",
-]
-
-CONCEPT_SCHEMA = "\n".join(f"{field}: ..." for field in CONCEPT_OUTPUT_FIELDS)
 
 STORY_TONE_LINE = "**TONE / FOCUS:** {tone}"
 STORY_EPISODE_HEADER = 'Write an episode for "Gravedancer to General: Anatomy of a Catastrophe".'
 STORY_EPISODE_ARC_HEADER = "## EPISODE ARC"
 STORY_OUTLINE_HEADER = 'Plan a {num_days}-day episode for "Gravedancer to General: Anatomy of a Catastrophe".'
-STORY_DAY_EXPANSION_HEADER = "Expand Day {day_number} of the episode below into full prose."
 STORY_SECTION_EXPANSION_HEADER = "Expand Section {section_index} of Day {day_number} into prose."
-STORY_CONTINUITY_HEADER = "Review the following Day {day_number} prose against the episode outline and lightly correct any continuity issues, repeated beats, or accidental contradictions."
 STORY_DAY_HEADING = "## DAY {day_number}: [Descriptive Title]"
 
 # Story prompt fragments

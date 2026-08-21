@@ -370,21 +370,6 @@ def sort_models_for_ui(installed_models: list) -> list:
     return sorted(installed_models, key=sort_key)
 
 
-def get_recommended_default(installed_models: list) -> str:
-    """Pick the best default model from what's installed."""
-    if not installed_models:
-        return DEFAULT_MODEL
-    
-    # Look for installed models in STORY_RECOMMENDED order
-    for recommended in STORY_RECOMMENDED:
-        for installed in installed_models:
-            if installed.startswith(recommended):
-                return installed
-    
-    # Fall back to first installed
-    return installed_models[0]
-
-
 def format_model_label(installed_name: str) -> str:
     """Format a model name for display in the UI."""
     info = get_model_info(installed_name)
@@ -399,45 +384,6 @@ def format_model_label(installed_name: str) -> str:
     if strengths:
         return f"{quality_badge} {info['display']} — {strengths}"
     return f"{quality_badge} {info['display']}"
-
-
-def get_install_commands() -> str:
-    """Generate setup commands for recommended models."""
-    return """\
-# Prerequisites for Gemma 4 (gemma4_unified model type needs mlx-lm from git + optiq)
-pip install -U mlx-optiq "mlx-lm @ git+https://github.com/ml-explore/mlx-lm.git"
-
-# PRIMARY — Qwen 3.8 27B OptiQ 4-bit MLX (highest-quality local story model)
-python -m mlx_lm.chat --model mlx-community/Qwen3.8-27B-OptiQ-4bit  # ~15-20GB on disk
-
-# FAST STORY — Gemma 4 E4B IT OptiQ 4-bit MLX
-python -m mlx_lm.chat --model mlx-community/gemma-4-e4b-it-OptiQ-4bit  # ~7.5GB on disk
-
-# UTILITY — Gemma 4 E2B IT 4-bit MLX
-python -m mlx_lm.chat --model mlx-community/gemma-4-e2b-it-4bit  # ~3-5GB on disk
-
-# Higher-quality option for Macs with sufficient unified memory
-python -m mlx_lm.chat --model mlx-community/Qwen3-32B-4bit  # ~18-20GB, excellent creative prose
-
-# Alternatives — lighter / faster iteration
-python -m mlx_lm.generate --model mlx-community/Qwen3.6-27B-4bit --prompt "Sanity check"  # ~14-16GB — lighter 4-bit MLX build for M-series Macs
-python -m mlx_lm.chat --model mlx-community/Qwen3-8B-4bit  # ~5-6GB, fast iteration on M-series Macs
-
-# Alternative MLX build
-python -m mlx_lm.generate --model qwen3.6:27b-mlx --prompt "Sanity check"      # ~18-20GB — MLX-accelerated for M-series Macs
-
-# Top tier (cross-platform)
-python -m mlx_lm.generate --model qwen3.6:27b --prompt "Sanity check"          # ~18-20GB — excellent prose + structure
-python -m mlx_lm.generate --model qwen2.5:32b --prompt "Sanity check"          # ~20GB, excellent prose
-python -m mlx_lm.generate --model llama3.1:70b --prompt "Sanity check"         # ~40GB, best in class
-python -m mlx_lm.generate --model gemma2:27b --prompt "Sanity check"           # ~16GB, Google, strong
-python -m mlx_lm.generate --model command-r --prompt "Sanity check"            # ~20GB, Cohere, creative-tuned
-
-# Mid tier (faster, lighter)
-python -m mlx_lm.generate --model llama3.1 --prompt "Sanity check"             # ~4.7GB, solid default
-python -m mlx_lm.generate --model gemma2 --prompt "Sanity check"               # ~5.4GB, fast
-python -m mlx_lm.generate --model mixtral --prompt "Sanity check"              # ~26GB, MoE
-"""
 
 
 MLX_CACHE_DIR = Path.home() / ".cache" / "huggingface" / "hub"

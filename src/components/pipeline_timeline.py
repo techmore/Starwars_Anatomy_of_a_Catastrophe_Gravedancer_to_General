@@ -65,12 +65,6 @@ class PipelineTracker:
             return e - s
         return None
 
-    def cumulative_offset(self, stage: str) -> float | None:
-        """Return seconds from global start to this stage's start, or None."""
-        s = self._start_times.get(stage)
-        if s is not None:
-            return s - self._global_start
-        return None
 
     @property
     def timings(self) -> dict[str, float]:

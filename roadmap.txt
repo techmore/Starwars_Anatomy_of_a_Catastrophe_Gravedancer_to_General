@@ -127,9 +127,10 @@ ROADMAP (priority order)
    • Pull gemma4 Gutenberg/Garnet finetunes ONLY to test whether their
      prose gain outweighs the under-generation risk (probably not for days)
 
-7. DRAW THINGS DEPTH
-   Video generation remains a manual handoff (README concedes this); either
-   descope from docs or wire drawthings_client.generate_video properly.
+7. DRAW THINGS DEPTH                                [on hold 2026-08-21]
+   GATED on first successful end-to-end story generation (see KNOWN ISSUES):
+   video generation stays a manual handoff; once episodes render reliably,
+   either descope from docs or wire drawthings_client.generate_video.
 
 KNOWN ISSUES / WATCH ITEMS
 --------------------------

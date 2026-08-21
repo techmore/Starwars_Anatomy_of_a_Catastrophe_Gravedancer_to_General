@@ -1,6 +1,7 @@
 """Logging helpers for the local app."""
 
 import logging
+import shutil
 import time
 from contextlib import contextmanager
 from datetime import datetime
@@ -8,19 +9,49 @@ from pathlib import Path
 from threading import RLock
 from uuid import uuid4
 
-from src.utils.settings import PROJECT_ROOT, SETTINGS
+from src.utils.settings import SETTINGS
 
-REPO_ROOT = PROJECT_ROOT
 LOG_DIR = SETTINGS.log_path
 LOG_PATH = LOG_DIR.parent / "log.txt"
+# log.txt aggregates every run; rotate to LOG_DIR/log.txt.1 rather than grow
+# unbounded (one archived generation is plenty for postmortems).
+LOG_ROTATE_BYTES = 8 * 1024 * 1024
+# Per-run log dirs are tiny but accumulate one per app/test session.
+RUN_LOG_RETENTION_DAYS = 14
 _RUN_LOCK = RLock()
 _CURRENT_RUN_LOG_PATH: Path | None = None
+
+
+def _rotate_log_if_large() -> None:
+    try:
+        if LOG_PATH.exists() and LOG_PATH.stat().st_size > LOG_ROTATE_BYTES:
+            archive = LOG_DIR / "log.txt.1"
+            archive.unlink(missing_ok=True)
+            LOG_PATH.rename(archive)
+    except OSError:
+        pass
+
+
+def _prune_old_run_logs() -> None:
+    """Delete RUN_* dirs older than the retention window (best effort)."""
+    cutoff = time.time() - RUN_LOG_RETENTION_DAYS * 86400
+    try:
+        for entry in LOG_DIR.glob("RUN_*"):
+            try:
+                if entry.is_dir() and entry.stat().st_mtime < cutoff:
+                    shutil.rmtree(entry, ignore_errors=True)
+            except OSError:
+                continue
+    except OSError:
+        pass
 
 
 def _ensure_log_targets() -> None:
     global _CURRENT_RUN_LOG_PATH
     if _CURRENT_RUN_LOG_PATH is not None:
         return
+    _rotate_log_if_large()
+    _prune_old_run_logs()
     run_dir = LOG_DIR / f"RUN_{datetime.now().strftime('%Y%m%d-%H%M%S')}"
     _CURRENT_RUN_LOG_PATH = run_dir / "Logs_Associated_with_start_of_Run.txt"
     LOG_DIR.mkdir(parents=True, exist_ok=True)

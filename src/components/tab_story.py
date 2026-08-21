@@ -5,7 +5,6 @@ Ports the working render_story_stage() logic from app.py and adds:
   - edit mode toggle for the full story text (Phase 4)
 """
 
-import re
 
 import streamlit as st
 
@@ -684,28 +683,6 @@ def _run_generation(mlx, model, temperature, storage, story_gen):
             st.session_state.pop("log_run_path", None)
 
 
-def _detect_current_day(story_text: str) -> str:
-    matches = re.findall(r"## DAY (\d+):", story_text, re.IGNORECASE)
-    return matches[-1] if matches else ""
-
-
-def _render_outline_gate():
-    """Display the editable outline when it has been generated but not yet approved."""
-    st.markdown("### Outline ready for review")
-    st.info("Approve the outline to begin prose expansion.")
-
-
-def _rebuild_outline_from_days(days):
-    return "\n\n".join(
-        _build_day_outline(
-            day.get("number"), day.get("title", f"Day {day.get('number')}"),
-            day.get("purpose", ""), day.get("sections", []),
-            day.get("ending_hook", ""),
-        )
-        for day in days
-    )
-
-
 def _build_day_outline(day_num, title, purpose, sections, ending_hook):
     lines = [f"## DAY {day_num}: {title}"]
     if purpose:
@@ -717,51 +694,6 @@ def _build_day_outline(day_num, title, purpose, sections, ending_hook):
     if ending_hook:
         lines.append(f"- Ending hook: {ending_hook}")
     return "\n".join(lines)
-
-
-def _generate_section_preview(
-    story_gen,
-    model,
-    title,
-    num_days,
-    outline,
-    day_number,
-    section_index,
-    section_count,
-    section_outline,
-    day_outline,
-    jedi_details,
-    setting,
-    tone_focus,
-    additional_instructions,
-    prior_text,
-    temperature,
-    system_prompt,
-):
-    return story_gen.mlx.generate(
-        model=model,
-        prompt=story_gen.build_section_expansion_prompt(
-            title=title,
-            num_days=num_days,
-            outline=outline,
-            day_number=day_number,
-            section_index=section_index,
-            section_count=section_count,
-            section_outline=section_outline,
-            prior_text=prior_text,
-            day_outline=day_outline,
-            jedi_details=jedi_details,
-            setting=setting,
-            tone_focus=tone_focus,
-            additional_instructions=additional_instructions,
-        ),
-        system=system_prompt,
-        temperature=temperature,
-        max_tokens=6000,
-    )
-
-
-
 
 
 def _build_day_draft_map(days, section_drafts, day_drafts=None):
@@ -787,43 +719,6 @@ def _build_day_draft_map(days, section_drafts, day_drafts=None):
             ),
         )
     return draft_map
-
-
-def _split_day_draft_into_sections(day_draft: str, section_count: int) -> list[str]:
-    """Split an assembled day draft into section-sized chunks."""
-    if not day_draft.strip():
-        return [""] * max(1, section_count)
-
-    lines = [line.strip() for line in day_draft.splitlines()]
-    body_lines = []
-    for line in lines:
-        if not line:
-            body_lines.append("")
-            continue
-        if line.startswith("## DAY "):
-            continue
-        if line.startswith("- Purpose:") or line.startswith("- Ending hook:"):
-            continue
-        if line.startswith("- Section "):
-            body_lines.append(line.split(": ", 1)[1] if ": " in line else line)
-            continue
-        body_lines.append(line)
-
-    raw_paragraphs = "\n".join(body_lines).split("\n\n")
-    paragraphs = [p.strip() for p in raw_paragraphs if p.strip()]
-    if not paragraphs:
-        paragraphs = [" ".join(body_lines).strip()] if body_lines else [day_draft.strip()]
-
-    sections = [""] * max(1, section_count)
-    if len(paragraphs) >= len(sections):
-        for idx in range(len(sections)):
-            sections[idx] = paragraphs[idx]
-    else:
-        for idx, paragraph in enumerate(paragraphs):
-            sections[idx] = paragraph
-        for idx in range(len(paragraphs), len(sections)):
-            sections[idx] = paragraphs[-1]
-    return sections
 
 
 def _render_current_story(story, storage, story_gen, model, temperature):
@@ -927,41 +822,3 @@ def _render_edit_mode(story, storage, ep_id):
             st.rerun()
 
 
-def _render_critique_report(critique: dict):
-    """Render the AI critique report with per-day scores and overall feedback."""
-    st.markdown("### 📋 AI Critique")
-    days = critique.get("days", [])
-    overall = critique.get("overall", {})
-
-    # Score row
-    score_cols = st.columns(len(days) + 1)
-    for idx, day in enumerate(days):
-        score = day.get("score")
-        with score_cols[idx]:
-            st.metric(f"Day {day['number']}", f"{score}/100" if score is not None else "—")
-    with score_cols[-1]:
-        overall_score = overall.get("score")
-        st.metric("Overall", f"{overall_score}/100" if overall_score is not None else "—")
-
-    # Per-day feedback
-    with st.expander("Day-by-day feedback", expanded=False):
-        for day in days:
-            st.markdown(f"**Day {day['number']}** — Score: {day.get('score', '—')}/100")
-            if day.get("what_worked"):
-                st.markdown(f"✅ {day['what_worked']}")
-            if day.get("what_could_be_improved"):
-                st.markdown(f"💡 {day['what_could_be_improved']}")
-            st.markdown("---")
-
-    # Overall feedback
-    with st.expander("Overall episode feedback", expanded=True):
-        for label, key in [
-            ("Narrative Arc", "narrative_arc"),
-            ("Pacing", "pacing"),
-            ("Thematic Coherence", "thematic_coherence"),
-            ("Character Consistency", "character_consistency"),
-            ("Recommendations", "recommendations"),
-        ]:
-            text = overall.get(key, "")
-            if text:
-                st.markdown(f"**{label}:** {text}")

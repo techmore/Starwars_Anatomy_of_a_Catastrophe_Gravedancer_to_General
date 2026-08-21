@@ -26,13 +26,6 @@ def aspect_to_dims(aspect_ratio: str) -> tuple:
     return ASPECT_DIMS.get(aspect_ratio, (1344, 768))
 
 
-def video_dims_for(aspect_ratio: str) -> tuple:
-    """Wan 2.2 friendly resolutions (smaller than image dims)."""
-    if aspect_ratio in ("9:16", "2:3"):
-        return (480, 832)
-    return (832, 480)
-
-
 def preformatted_html(text: object) -> str:
     """Build a safe preformatted block for model/user-provided text."""
     return f"<pre class='pre-wrap'>{escape(str(text or ''))}</pre>"
@@ -125,17 +118,3 @@ def inject_ui_assets() -> None:
     st.markdown(_COPY_CSS, unsafe_allow_html=True)
 
 
-def connection_badge(ok: bool, label_ok: str = "Connected", label_bad: str = "Offline") -> str:
-    """Return HTML for a small connection pill. Caller renders via st.markdown."""
-    cls = "conn-ok" if ok else "conn-bad"
-    text = label_ok if ok else label_bad
-    return f'<span class="conn-badge {cls}">{text}</span>'
-
-
-def prompt_block(title: str, text: str, key: str | None = None) -> None:
-    """Render a labelled prompt block with a copy button + code view."""
-    col_btn, col_spacer = st.columns([1, 6])
-    with col_btn:
-        copy_button(text, label="Copy", key=key)
-    st.caption(f"**{title}**")
-    st.code(text, language="text")
