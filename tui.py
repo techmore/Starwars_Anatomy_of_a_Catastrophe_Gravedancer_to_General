@@ -133,6 +133,9 @@ class RunRecord:
     progress: "RunProgress" = field(default_factory=lambda: RunProgress())
     activity: str = ""
     error_tail: str = ""
+    server_proc: Optional[subprocess.Popen] = None
+    server_base: str = ""
+    server_model: str = ""
 
 
 class RunLine(Message):
@@ -1143,6 +1146,36 @@ class GravedancerTUI(App):
             header = "Runs (live) — " + " · ".join(parts) if parts else "Runs (live)"
         self.query_one("#runs-header", Static).update(header)
 
+    def _shutdown_spawned_server(self, record: RunRecord) -> None:
+        """Kill a TUI-spawned server after its run ends.
+
+        Servers the user started manually are never touched (no proc ref).
+        If another still-active run shares this server, it stays up until
+        that run finishes too.
+        """
+        for other_id in self.run_order:
+            other = self.runs.get(other_id)
+            if other is record or other is None:
+                continue
+            if (other.status in ("running", "stopping")
+                    and other.server_base == record.server_base):
+                self._log(f"[server] {record.server_model} left running — "
+                          f"shared by {other.label}")
+                return
+        proc = record.server_proc
+
+        def kill() -> None:
+            try:
+                os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+            except (OSError, ProcessLookupError):
+                try:
+                    proc.terminate()
+                except Exception:
+                    pass
+
+        self._escalate_local(kill)
+        self._log(f"[server] shutting down {record.server_model} on {record.server_base}")
+
     def _select_run(self, run_id: str) -> None:
         self.active_run_id = run_id
         record = self.runs.get(run_id)
@@ -1191,6 +1224,8 @@ class GravedancerTUI(App):
             if match:
                 record.episode_id = match.group(1).strip("/")
                 break
+        if record.server_proc is not None:
+            self._shutdown_spawned_server(record)
         tail = "\n".join(record.lines[-6:])
         if record.status == "finished":
             summary = "\n".join(
@@ -1334,11 +1369,14 @@ class GravedancerTUI(App):
         log(f"[server] starting {real_model} on :{port} "
             f"(~16 GB models take 20-90s to load)…")
         try:
-            subprocess.Popen(
+            proc = subprocess.Popen(
                 server_cmd, cwd=str(PROJECT_ROOT),
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                 start_new_session=True,
             )
+            record.server_proc = proc
+            record.server_base = base
+            record.server_model = real_model
         except OSError as exc:
             record.status = "error"
             record.ended = time.perf_counter()
