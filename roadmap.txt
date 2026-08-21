@@ -1,0 +1,130 @@
+════════════════════════════════════════════════════════════════════
+  GRAVEDANCER → GENERAL — ROADMAP
+  Updated: 2026-08-21 · Suite: 159/159 · All work committed through 50be4d7
+════════════════════════════════════════════════════════════════════
+
+WHAT THE APP IS
+---------------
+Local-first (Mac/MLX) + hosted (OpenCode) creator pipeline for the Star Wars
+fan series "Gravedancer to General": structured random seed → outline →
+day-by-day novella → visual prompts, with a Textual TUI driving parallel
+local/remote runs, live stage-tree progress, and browser previews.
+
+────────────────────────────────────────────────────────────────────
+CURRENT STATE — WORKING TODAY
+────────────────────────────────────────────────────────────────────
+✓ Pipeline: seed tables → validated outline → multi-pass story (per-chapter)
+  → chapter extraction → banner + per-chapter visual prompts → saved episode
+✓ Checkpoint/resume: SIGTERM becomes GenerationCancelled; completed days are
+  checkpointed; rerun with same --seed resumes; CLI releases weights on exit
+✓ TUI: harness select (rapid-mlx / LM Studio / Ollama / remote-openai /
+  OpenCode / native-MLX), merged multi-server model list ("model @port"),
+  load-on-run servers (auto-spawn rapid-mlx serve, auto-shutdown after run),
+  live progress panel (% bar, runtime, words/day, tokens/chapter), episode
+  viewer (story/prompts/info), B = styled HTML preview in browser,
+  persistence of harness/model/seed/url, quit-guard modal, random-seed (n)
+  with title preview, error tails, watchdog'd OpenCode calls
+✓ Performance: import 3.2s→113ms, instance-scoped model cache, throttled
+  stream snapshots (see docs/performance-notes.md)
+
+MODEL GUIDANCE (as of 2026-08 research)
+---------------------------------------
+HOSTED (OpenCode catalog):
+  gpt-5.6-luna        ← recommended default for full episodes. GPT lineage =
+                        best outline adherence + character arcs across long
+                        generations. ~$0.40 per 270k-token episode.
+  muse-spark-1.2      ← prose upgrade when wanted (EQ Creative ~1911 family);
+    -contributor        free variant exists. A/B it against luna on one seed.
+  glm-5.3             solid alternate (~1750 EQ Creative class)
+  kimi-k3             ⚠ avoid for this app: #1 short-form creative but #6
+                        Longform; reasoning is always-on so 81-86% of billed
+                        output tokens are invisible thinking — brutal at
+                        40k-token/day volume
+  ox-alpha-free       fine for smoke tests; free tier stalls under volume
+                        (watchdog now catches this in ≤10min instead of ∞)
+LOCAL (32GB M1 Pro):
+  qwen3.8-27b-optiq   ← production default (strong genre fiction, length-
+                        adherence better than Gemma alternatives)
+  gemma-4-e4b-optiq   ← fast drafts / tight-memory days
+  SKIP Gemma 4 31B despite strong prose scores — documented failure mode is
+  under-generation ("writes much shorter than asked"), fatal at 40k tok/day.
+  Optional experiment: community finetunes (Gemma4-Gutenberg-31B /
+  Garnet-31B) fix slop but likely not the length issue.
+
+THE 40K-TOKENS-PER-DAY LEVER
+----------------------------
+Daily output = chapters/day × SECTION_MAX_TOKENS. Current: 5 × 4500 = 22.5k
+tokens/day on local MLX (memory-bound ceiling). For hosted runs the TUI now
+auto-sets GRAVEDANCER_SECTION_MAX_TOKENS=12000 → 5 × 12000 = 60k tokens/day
+headroom (target is ~45k). Tunables:
+  GRAVEDANCER_DAILY_TARGET_TOKENS   (default 45000 → drives word targets)
+  GRAVEDANCER_SECTION_MAX_TOKENS    (default 4500; TUI forces 12000 on OpenCode)
+  GRAVEDANCER_OPENCODE_STALL        (default 600s no-output → kill)
+  GRAVEDANCER_OPENCODE_TIMEOUT      (default 1800s overall → kill)
+NOTE: free-tier endpoints may still stall/rate-limit at this volume. For real
+production runs use gpt-5.6-luna (~$0.40/episode) — fast and reliable.
+
+────────────────────────────────────────────────────────────────────
+ROADMAP (priority order)
+────────────────────────────────────────────────────────────────────
+1. VALIDATE LUNA END-TO-END                                    [next up]
+   Run one full episode on opencode-go/gpt-5.6-luna at production length
+   (~45k tok/day). Confirms cost estimate (~$0.40), watches for mid-run
+   rate limits, and gives a quality baseline vs The Ashen Chain demo.
+
+2. STORY-TOGETHER UPGRADE (pipeline-side continuity)
+   Research consensus: model choice helps, but our sections only see a
+   ~1800-char tail. Add a running "story-so-far" summary (per-day recap
+   generated at each day boundary, injected into every section prompt) +
+   optionally raise tail to ~4000 chars for hosted runs. This is the single
+   biggest coherence lever that doesn't depend on model choice.
+
+3. PER-DAY MODEL ROUTING
+   We already route per-run. Next: per-stage models (outline on strongest
+   plot model, prose on best writer, visual prompts on cheap/fast) — the
+   research consistently shows split-workflow beats single-model.
+
+4. SERIES MEMORY (multi-episode)
+   Episode n+1 should know episode n: auto-generate a series bible entry
+   (characters, injuries, artifacts, unresolved threads) into
+   episodes/series-bible.json and inject into concept/outline prompts.
+
+5. TUI POLISH BACKLOG (docs/tui-ux-audit.md #10, #14 leftovers)
+   Two-line run rows for narrow terminals; surface last-error in row done,
+   but consider color-coding rows by status.
+
+6. LOCAL EXPERIMENTS (optional)
+   • rapid-mlx --speculative-config with the MTP checkpoint you already have
+     cached (rapid-mlx/Qwen3.8-27B-4bit-MTP-MLX) — measure tok/s delta
+   • Pull gemma4 Gutenberg/Garnet finetunes ONLY to test whether their
+     prose gain outweighs the under-generation risk (probably not for days)
+
+7. DRAW THINGS DEPTH
+   Video generation remains a manual handoff (README concedes this); either
+   descope from docs or wire drawthings_client.generate_video properly.
+
+KNOWN ISSUES / WATCH ITEMS
+--------------------------
+• Free-tier OpenCode endpoints stall under sustained volume — watchdog now
+  converts this to an error in ≤10 min, but production runs should use paid
+  cheap models (luna).
+• opencode CLI ignores temperature/top_p/max_tokens entirely (provider-bound).
+• LM Studio + rapid-mlx share port 1234 by default — don't run both servers
+  simultaneously without moving one.
+• tests/test_session_state asserts current defaults (fixed); keep in sync
+  when DEFAULT_MODEL changes again.
+• Streamlit shell still works but TUI is now the primary interface; Streamlit
+  tabs duplicate keyframe rendering (tab_art/tab_viewer) — consolidate if the
+  web shell stays.
+
+ENV / COMMAND CHEAT SHEET
+-------------------------
+  python tui.py                     # the launcher (V viewer · B browser ·
+                                    # P progress · N random seed · Q quit)
+  python run_creative_pipeline.py --seed N [--model REF]
+  python scripts/run_oxalpha_pipeline.py            # scripted ox-alpha demo
+  python scripts/benchmark_model.py --model REF --max-tokens 256
+  refs: "lmstudio:<id>" (any HTTP) · "opencode:<id>" · bare id = native MLX
+  state file: ~/.gravedancer/tui-state.json
+  server logs: log/rapid-mlx-*.log
+════════════════════════════════════════════════════════════════════
