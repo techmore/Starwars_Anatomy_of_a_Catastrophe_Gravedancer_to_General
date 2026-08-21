@@ -161,22 +161,28 @@ def main(seed_value: int, run_dir: Path) -> int:
         None,
     )
     day_drafts: Dict[int, str] = {}
+    day_recaps: Dict[int, str] = {}
     draft_only = False
     if resumed:
         drafts = resumed.get("day_drafts") or {}
         day_drafts = {int(day): str(text) for day, text in drafts.items()}
+        recaps = resumed.get("day_recaps") or {}
+        day_recaps = {int(day): str(text) for day, text in recaps.items()}
         draft_only = True
         metadata["resumed_from_checkpoint"] = datetime.now().isoformat()
         print(f"  [checkpoint] resuming with {len(day_drafts)} completed day(s)", flush=True)
 
-    def save_day_checkpoint(day_number: int, day_text: str) -> None:
+    def save_day_checkpoint(day_number: int, day_text: str, recap: str = "") -> None:
         day_drafts[day_number] = day_text
+        if recap.strip():
+            day_recaps[day_number] = recap.strip()
         path = storage.save_checkpoint(
             title=seed["title"],
             metadata=metadata,
             day_drafts=day_drafts,
             outline=outline,
             scope=checkpoint_scope,
+            day_recaps=day_recaps,
         )
         LOGGER.info("Story checkpoint saved path=%s day=%s", path, day_number)
 
@@ -236,6 +242,7 @@ def main(seed_value: int, run_dir: Path) -> int:
         temperature=0.8,
         outline=outline,
         day_drafts=day_drafts or None,
+        day_recaps=day_recaps or None,
         draft_only=draft_only,
         progress_callback=lambda stage, message, text="": log(stage, message)
         if text == "" else None,

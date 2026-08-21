@@ -33,6 +33,7 @@ SESSION_DEFAULTS = {
     "story_section_previews": {},
     "story_section_drafts": {},
     "story_day_drafts": {},
+    "story_day_recaps": {},
     "story_draft_only_mode": False,
     "story_outline_approved": False,
     "current_critique_report": None,
@@ -108,6 +109,7 @@ def reset_story_flow(st) -> None:
     st.session_state["story_section_previews"] = {}
     st.session_state["story_section_drafts"] = {}
     st.session_state["story_day_drafts"] = {}
+    st.session_state["story_day_recaps"] = {}
     st.session_state["story_draft_only_mode"] = False
     st.session_state["story_outline_approved"] = False
     st.session_state["current_critique_report"] = None

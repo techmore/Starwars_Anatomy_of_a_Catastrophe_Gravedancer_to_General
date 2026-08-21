@@ -44,8 +44,36 @@ OUTLINE_MAX_TOKENS = 5000
 # GRAVEDANCER_SECTION_MAX_TOKENS (the TUI sets 12000 for OpenCode) so a
 # 5-chapter day can reach the ~45k-token daily target.
 SECTION_MAX_TOKENS = int(os.environ.get("GRAVEDANCER_SECTION_MAX_TOKENS", "4500"))
+# Prose tail handed to each section prompt ("PRIOR PROSE"). Local runs keep the
+# memory-bound 1800-char ceiling; hosted runs raise it via env (the TUI sets
+# 4000 for OpenCode) so chapters see more of the immediately preceding scene.
+SECTION_TAIL_CHARS = int(os.environ.get("GRAVEDANCER_SECTION_TAIL_CHARS", "1800"))
+# Story-together continuity: after each completed day a short recap is
+# generated and injected into every later section prompt, so chapters carry
+# established facts instead of relying on the prose tail alone.
+RECAP_SYSTEM_PROMPT = (
+    "You are a continuity clerk for serialized military science fiction. "
+    "You produce terse, factual summaries a writer can rely on for consistency."
+)
+RECAP_MAX_TOKENS = 700
+STORY_SO_FAR_MAX_CHARS = int(os.environ.get("GRAVEDANCER_STORY_SO_FAR_MAX_CHARS", "8000"))
 
 OUTLINE_RECOVERY_ATTEMPTS = 3
+
+
+def _story_so_far_enabled() -> bool:
+    """Runtime toggle so long local runs can opt out of recap calls."""
+    return os.environ.get("GRAVEDANCER_STORY_SO_FAR", "1").strip().lower() not in {"0", "false", "off"}
+
+
+def _section_tail_chars() -> int:
+    """Per-section prose tail; hosted runs raise this via GRAVEDANCER_SECTION_TAIL_CHARS."""
+    raw = os.environ.get("GRAVEDANCER_SECTION_TAIL_CHARS", "").strip()
+    try:
+        value = int(raw) if raw else SECTION_TAIL_CHARS
+    except ValueError:
+        value = SECTION_TAIL_CHARS
+    return max(200, value)
 
 
 def _retry_outline(
@@ -308,6 +336,7 @@ Requirements:
         setting: str,
         tone_focus: List[str],
         additional_instructions: str,
+        story_so_far: str = "",
     ) -> str:
         """Build a focused prompt to expand one chapter outline into prose."""
         errors = validate_story_prompt_inputs(
@@ -322,6 +351,7 @@ Requirements:
         tone_section = f"\n{STORY_TONE_LINE.format(tone=', '.join(tone_focus))}" if tone_focus else ""
         additional_section = f"\n**ADDITIONAL INSTRUCTIONS:**\n{additional_instructions}" if additional_instructions.strip() else ""
         prior_section = f"\n**PRIOR PROSE:**\n{prior_text}" if prior_text.strip() else ""
+        summary_section = f"\n**STORY SO FAR (completed earlier days):**\n{story_so_far.strip()}" if story_so_far.strip() else ""
         episode_arc = self.parse_episode_arc(outline)
         arc_section = f"\n**EPISODE ARC:**\n{episode_arc}" if episode_arc else ""
         section_word_target = TARGET_WORDS_PER_DAY // max(section_count, 1)
@@ -332,7 +362,7 @@ Requirements:
 **SETTING / PLANET:** {setting}
 **JEDI TARGET:** {json.dumps(jedi_details, ensure_ascii=False, indent=2)}
 {tone_section}{additional_section}
-{arc_section}
+{arc_section}{summary_section}
 
 **SECTION {section_index} OUTLINE:**
 {section_outline}
@@ -343,6 +373,7 @@ this form, using a short descriptive title based on the approved outline:
 ### Chapter {section_index}: [Descriptive Title]
 Then write the prose. Requirements:
 - Continue the story seamlessly from the prior prose.
+- Honor every fact in STORY SO FAR (names, injuries, objects, promises, unresolved threads); never contradict earlier days.
 - Keep this section focused on the provided outline.
 - Do not invent a new major beat.
 - Do not repeat sentences, beats, or phrasing from the prior prose unless the repetition is intentionally dramatic and introduces new information.
@@ -355,6 +386,49 @@ Then write the prose. Requirements:
 - Structure the section as a compact chapter with 2-4 micro-beat-sized movements.
 - Do not add a new chapter heading or a Day heading inside the section.
 """
+
+    def build_day_recap_prompt(self, title: str, day_number: int, day_text: str) -> str:
+        """Build the continuity-digest prompt for a completed day."""
+        return f"""Summarize Day {day_number} of "{title}" as a continuity digest for future writing passes.
+
+**DAY {day_number} TEXT:**
+{day_text}
+
+Return 4-6 sentences of plain prose — no headings, no bullet points — covering only:
+- Where the story now stands (location, time of day).
+- Qymaen's physical and emotional state, including any new injuries or equipment.
+- The Jedi's status, tactics observed, and current position.
+- New objects, promises, threats, or unresolved threads left open.
+- The exact situation at the day's final moment.
+
+Do not retell the plot beat-by-beat. Do not comment on style or quality. Facts only."""
+
+    def generate_day_recap(
+        self,
+        model: str,
+        title: str,
+        day_number: int,
+        day_text: str,
+        system_prompt: Optional[str] = None,
+    ) -> str:
+        """Summarize a completed day into a compact continuity digest."""
+        prompt = self.build_day_recap_prompt(title=title, day_number=day_number, day_text=day_text)
+        system = system_prompt or RECAP_SYSTEM_PROMPT
+        LOGGER.info(
+            "day recap start title=%s day=%s model=%s prompt_chars=%s",
+            title,
+            day_number,
+            model,
+            len(prompt),
+        )
+        result = self.mlx.generate(
+            model=model,
+            prompt=prompt,
+            system=system,
+            temperature=0.2,
+            max_tokens=RECAP_MAX_TOKENS,
+        )
+        return (result or "").strip()
 
     def generate_story(
         self,
@@ -461,13 +535,20 @@ Then write the prose. Requirements:
         system_prompt: Optional[str] = None,
         outline: Optional[str] = None,
         day_drafts: Optional[Dict[int, str]] = None,
+        day_recaps: Optional[Dict[int, str]] = None,
         draft_only: bool = False,
         progress_callback: ProgressCallback | None = None,
         outline_max_tokens: int | None = None,
         section_max_tokens: int | None = None,
-        checkpoint_callback: Callable[[int, str], None] | None = None,
+        checkpoint_callback: Callable[[int, str, str], None] | None = None,
     ) -> str:
-        """Generate outline first, then expand each day."""
+        """Generate outline first, then expand each day.
+
+        Continuity: a short recap is generated at each day boundary and every
+        later section prompt receives the running "story so far" digest in
+        addition to the prose tail. ``day_recaps`` seeds previously stored
+        recaps (checkpoint resume) so resumed runs keep the same context.
+        """
         LOGGER.info(
             "multi-pass start title=%s days=%s model=%s outline_present=%s draft_only=%s temperature=%.2f",
             title,
@@ -621,11 +702,38 @@ Then write the prose. Requirements:
         day_blocks = self._split_outline_days(outline)
         day_stories: List[str] = []
         previous_day = ""
+        recaps_enabled = _story_so_far_enabled()
+        recap_entries: List[str] = []
+        seen_recap_days: set = set()
+
+        def _append_recap(day_number: int, recap_text: str) -> None:
+            clean = (recap_text or "").strip()
+            if not clean or day_number in seen_recap_days:
+                return
+            seen_recap_days.add(day_number)
+            recap_entries.append(f"**Day {day_number}:** {clean}")
+
+        def _story_so_far_text() -> str:
+            if not recap_entries:
+                return ""
+            joined = "\n\n".join(recap_entries)
+            if len(joined) <= STORY_SO_FAR_MAX_CHARS:
+                return joined
+            trimmed: List[str] = []
+            budget = STORY_SO_FAR_MAX_CHARS
+            for entry in reversed(recap_entries):
+                if budget <= 0:
+                    break
+                trimmed.append(entry)
+                budget -= len(entry) + 2
+            return "\n\n".join(reversed(trimmed))
+
         for day_number in range(1, num_days + 1):
             if _cancellation_requested():
                 raise GenerationCancelled("Generation cancelled before the next day; checkpoint preserved.")
             day_outline = day_blocks.get(day_number, "").strip()
             day_draft = (day_drafts or {}).get(day_number, "")
+            this_day_recap = ""
             _emit("day", f"Expanding Day {day_number}/{num_days}...")
             day_start = time.perf_counter()
             LOGGER.info(
@@ -641,18 +749,24 @@ Then write the prose. Requirements:
                 _emit("checkpoint", f"Reusing checkpoint for Day {day_number}.")
                 LOGGER.info("day checkpoint reused title=%s day=%s draft_chars=%s", title, day_number, len(day_draft))
                 day_text = day_draft.strip()
+                reused_draft = True
+                if recaps_enabled:
+                    stored = (day_recaps or {}).get(day_number, "").strip()
+                    _append_recap(day_number, stored)
+                    this_day_recap = stored
             else:
+                reused_draft = False
                 section_blocks = self._split_day_sections(day_outline)
                 section_texts: List[str] = []
                 # Keep only a short continuity tail so the model does not start echoing prior sections.
-                prior_text = self._tail_for_context(previous_day, max_chars=2500)
+                prior_text = self._tail_for_context(previous_day, max_chars=max(2500, _section_tail_chars()))
                 LOGGER.info("day section loop begin title=%s day=%s section_count=%s", title, day_number, len(section_blocks))
                 for section_index, section_outline in enumerate(section_blocks, start=1):
                     if _cancellation_requested():
                         raise GenerationCancelled("Generation cancelled before the next section; checkpoint preserved.")
                     _emit("section", f"Day {day_number}: expanding section {section_index}/{len(section_blocks)}")
                     section_start = time.perf_counter()
-                    context_tail = self._tail_for_context(prior_text, max_chars=1800)
+                    context_tail = self._tail_for_context(prior_text, max_chars=_section_tail_chars())
                     LOGGER.info(
                         "section pass begin title=%s day=%s section=%s/%s section_chars=%s prior_chars=%s",
                         title,
@@ -671,6 +785,7 @@ Then write the prose. Requirements:
                         section_count=len(section_blocks),
                         section_outline=section_outline,
                         prior_text=context_tail,
+                        story_so_far=_story_so_far_text(),
                         day_outline=day_outline,
                         jedi_details=jedi_details,
                         setting=setting,
@@ -688,7 +803,7 @@ Then write the prose. Requirements:
                     )
                     section_text = self._strip_embedded_day_headings(section_text)
                     section_texts.append(section_text.strip())
-                    prior_text = self._tail_for_context(section_text, max_chars=2500)
+                    prior_text = self._tail_for_context(section_text, max_chars=max(2500, _section_tail_chars()))
                     section_word_count = len(section_text.split())
                     section_word_target = TARGET_WORDS_PER_DAY // max(len(section_blocks), 1)
                     LOGGER.info(
@@ -712,8 +827,33 @@ Then write the prose. Requirements:
                 day_text = f"## DAY {day_number}: {day_title}\n\n{day_text.strip()}"
             day_stories.append(day_text.strip())
             previous_day = day_text.strip()
+            if recaps_enabled and not reused_draft:
+                _emit("recap", f"Summarizing Day {day_number} for continuity...")
+                recap_start = time.perf_counter()
+                try:
+                    this_day_recap = self.generate_day_recap(
+                        model=model,
+                        title=title,
+                        day_number=day_number,
+                        day_text=day_text,
+                    )
+                    _append_recap(day_number, this_day_recap)
+                    LOGGER.info(
+                        "day recap end title=%s day=%s chars=%s elapsed=%.3fs",
+                        title,
+                        day_number,
+                        len(this_day_recap),
+                        time.perf_counter() - recap_start,
+                    )
+                except Exception as exc:
+                    LOGGER.warning(
+                        "day recap failed title=%s day=%s error=%s",
+                        title,
+                        day_number,
+                        exc,
+                    )
             if checkpoint_callback:
-                checkpoint_callback(day_number, day_text.strip())
+                checkpoint_callback(day_number, day_text.strip(), this_day_recap)
             day_word_count = len(day_text.split())
             day_word_ratio = day_word_count / TARGET_WORDS_PER_DAY
             LOGGER.info(

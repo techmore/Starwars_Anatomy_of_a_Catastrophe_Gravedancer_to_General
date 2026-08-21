@@ -131,13 +131,15 @@ class EpisodeStorage:
         day_drafts: Dict[int, str],
         outline: str = "",
         scope: str = "",
+        day_recaps: Optional[Dict[int, str]] = None,
     ) -> Path:
         """Atomically persist an in-progress story checkpoint.
 
         Checkpoints are deliberately separate from completed episodes so a
         failed run cannot appear as a finished library item. *scope* namespaces
         the checkpoint key so concurrent runs sharing a title cannot clobber
-        each other's recovery data.
+        each other's recovery data. *day_recaps* stores the per-day continuity
+        digests so a resumed run rebuilds the same "story so far" context.
         """
         checkpoint_dir = self.base_path / ".checkpoints"
         checkpoint_dir.mkdir(parents=True, exist_ok=True)
@@ -151,6 +153,7 @@ class EpisodeStorage:
             "metadata": dict(metadata or {}),
             "outline": outline or "",
             "day_drafts": {str(day): text for day, text in (day_drafts or {}).items()},
+            "day_recaps": {str(day): text for day, text in (day_recaps or {}).items()},
             "updated_at": datetime.now().isoformat(),
         }
         self._atomic_write_json(path, payload)

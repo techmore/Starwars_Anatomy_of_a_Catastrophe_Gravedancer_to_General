@@ -17,12 +17,14 @@ class TestEpisodeStorageMetadata(unittest.TestCase):
                 {"num_days": 2, "jedi_name": "Jedi"},
                 {1: "## DAY 1: Ashfall\n\nDraft"},
                 outline="## DAY 1: Ashfall",
+                day_recaps={1: "Qymaen lost an eye; the Jedi fled north."},
             )
 
             self.assertTrue(checkpoint.exists())
             payload = json.loads(checkpoint.read_text(encoding="utf-8"))
             self.assertEqual(payload["title"], "Checkpoint Title")
             self.assertEqual(payload["day_drafts"]["1"], "## DAY 1: Ashfall\n\nDraft")
+            self.assertEqual(payload["day_recaps"]["1"], "Qymaen lost an eye; the Jedi fled north.")
             self.assertEqual(storage.list_episodes(), [])
 
             checkpoints = storage.list_checkpoints()

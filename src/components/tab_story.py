@@ -109,6 +109,9 @@ def render_story_stage(context):
                 st.session_state["story_day_drafts"] = {
                     int(day): text for day, text in loaded.get("day_drafts", {}).items()
                 }
+                st.session_state["story_day_recaps"] = {
+                    int(day): text for day, text in (loaded.get("day_recaps") or {}).items()
+                }
                 st.session_state["story_draft_only_mode"] = True
                 st.session_state["show_manual_form_state"] = True
                 st.success("Checkpoint loaded. Review the inputs, then resume generation.")
@@ -489,16 +492,21 @@ def _run_generation(mlx, model, temperature, storage, story_gen):
             def _push_progress(stage: str, message: str, text: str = "") -> None:
                 render_stream_update(stage, message, text, widgets, progress_state)
 
-            def _checkpoint_day(day_number: int, day_text: str) -> None:
+            def _checkpoint_day(day_number: int, day_text: str, recap: str = "") -> None:
                 """Retain completed days so a failed run can be resumed in-session."""
                 drafts = dict(st.session_state.get("story_day_drafts", {}))
                 drafts[day_number] = day_text
                 st.session_state["story_day_drafts"] = drafts
+                recaps = dict(st.session_state.get("story_day_recaps", {}))
+                if recap.strip():
+                    recaps[day_number] = recap.strip()
+                st.session_state["story_day_recaps"] = recaps
                 checkpoint_path = storage.save_checkpoint(
                     title=title,
                     metadata=payload["metadata"],
                     day_drafts=drafts,
                     outline=st.session_state.get("story_outline", ""),
+                    day_recaps=recaps,
                 )
                 _push_progress("checkpoint", f"Checkpoint saved after Day {day_number}.")
                 LOGGER.info("Story checkpoint saved path=%s day=%s", checkpoint_path, day_number)
@@ -570,6 +578,7 @@ def _run_generation(mlx, model, temperature, storage, story_gen):
                     st.session_state.get("story_section_drafts", {}),
                     current_day_drafts,
                 ),
+                day_recaps=dict(st.session_state.get("story_day_recaps", {})) or None,
                 draft_only=st.session_state.get("story_draft_only_mode", False),
                 progress_callback=_push_progress,
                 checkpoint_callback=_checkpoint_day,

@@ -1415,8 +1415,10 @@ class GravedancerTUI(App):
         if harness.kind == "opencode_cli":
             # Hosted models are not memory-bound: raise the per-section cap so
             # a 5-chapter day can reach the ~45k-token daily target instead of
-            # stalling at the local 4500-token ceiling.
+            # stalling at the local 4500-token ceiling, and widen the prose
+            # tail so chapters see more of the preceding scene.
             env.setdefault("GRAVEDANCER_SECTION_MAX_TOKENS", "12000")
+            env.setdefault("GRAVEDANCER_SECTION_TAIL_CHARS", "4000")
         command = [
             sys.executable,
             "-u",

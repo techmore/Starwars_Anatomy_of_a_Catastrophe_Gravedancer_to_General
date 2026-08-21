@@ -142,24 +142,30 @@ def main(seed_value: int = DEFAULT_SEED_VALUE, model: Optional[str] = None):
     checkpoint_scope = f"cli:{seed_value}:{uuid.uuid4().hex[:8]}"
     resumed = _find_checkpoint(storage, seed["title"])
     day_drafts: Dict[int, str] = {}
+    day_recaps: Dict[int, str] = {}
     draft_only = False
     if resumed and (resumed.get("metadata") or {}).get("num_days") in (None, seed["num_days"]):
         drafts = resumed.get("day_drafts") or {}
         day_drafts = {int(day): str(text) for day, text in drafts.items()}
+        recaps = resumed.get("day_recaps") or {}
+        day_recaps = {int(day): str(text) for day, text in recaps.items()}
         draft_only = True
         metadata["resumed_from_checkpoint"] = datetime.now().isoformat()
         print(f"Resuming from checkpoint: {len(day_drafts)} completed day(s) will be reused.")
     else:
         resumed = None
 
-    def save_day_checkpoint(day_number: int, day_text: str) -> None:
+    def save_day_checkpoint(day_number: int, day_text: str, recap: str = "") -> None:
         day_drafts[day_number] = day_text
+        if recap.strip():
+            day_recaps[day_number] = recap.strip()
         path = storage.save_checkpoint(
             title=seed["title"],
             metadata=metadata,
             day_drafts=day_drafts,
             outline=outline,
             scope=checkpoint_scope,
+            day_recaps=day_recaps,
         )
         print(f"  [checkpoint] Day {day_number} saved ({len(day_drafts)}/{seed['num_days']} days)", flush=True)
         LOGGER.info("Story checkpoint saved path=%s day=%s", path, day_number)
@@ -260,6 +266,7 @@ def main(seed_value: int = DEFAULT_SEED_VALUE, model: Optional[str] = None):
             temperature=0.8,
             outline=outline,
             day_drafts=day_drafts or None,
+            day_recaps=day_recaps or None,
             draft_only=draft_only,
             progress_callback=progress_callback,
             checkpoint_callback=save_day_checkpoint,

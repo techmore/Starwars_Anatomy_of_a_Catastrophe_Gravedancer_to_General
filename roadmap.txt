@@ -1,6 +1,6 @@
 ════════════════════════════════════════════════════════════════════
   GRAVEDANCER → GENERAL — ROADMAP
-  Updated: 2026-08-21 · Suite: 159/159 · All work committed through 50be4d7
+  Updated: 2026-08-21 · Suite: 171/171 · story-together landed (uncommitted)
 ════════════════════════════════════════════════════════════════════
 
 WHAT THE APP IS
@@ -26,6 +26,11 @@ CURRENT STATE — WORKING TODAY
   with title preview, error tails, watchdog'd OpenCode calls
 ✓ Performance: import 3.2s→113ms, instance-scoped model cache, throttled
   stream snapshots (see docs/performance-notes.md)
+✓ Story-together continuity: per-day recap generated at each day boundary,
+  running "STORY SO FAR" digest injected into every section prompt; recaps
+  persist in checkpoints (day_recaps) so resume keeps the same context;
+  section prose tail now configurable via GRAVEDANCER_SECTION_TAIL_CHARS
+  (TUI sets 4000 on hosted runs). Kill-switch: GRAVEDANCER_STORY_SO_FAR=0
 
 MODEL GUIDANCE (as of 2026-08 research)
 ---------------------------------------
@@ -61,6 +66,10 @@ headroom (target is ~45k). Tunables:
   GRAVEDANCER_SECTION_MAX_TOKENS    (default 4500; TUI forces 12000 on OpenCode)
   GRAVEDANCER_OPENCODE_STALL        (default 600s no-output → kill)
   GRAVEDANCER_OPENCODE_TIMEOUT      (default 1800s overall → kill)
+Continuity tunables (story-together):
+  GRAVEDANCER_STORY_SO_FAR          (default on; "0"/"false"/"off" disables)
+  GRAVEDANCER_STORY_SO_FAR_MAX_CHARS(default 8000 cap on injected digest)
+  GRAVEDANCER_SECTION_TAIL_CHARS    (default 1800; TUI forces 4000 on OpenCode)
 NOTE: free-tier endpoints may still stall/rate-limit at this volume. For real
 production runs use gpt-5.6-luna (~$0.40/episode) — fast and reliable.
 
@@ -71,13 +80,14 @@ ROADMAP (priority order)
    Run one full episode on opencode-go/gpt-5.6-luna at production length
    (~45k tok/day). Confirms cost estimate (~$0.40), watches for mid-run
    rate limits, and gives a quality baseline vs The Ashen Chain demo.
+   Now also the first quality test of story-so-far continuity.
 
-2. STORY-TOGETHER UPGRADE (pipeline-side continuity)
-   Research consensus: model choice helps, but our sections only see a
-   ~1800-char tail. Add a running "story-so-far" summary (per-day recap
-   generated at each day boundary, injected into every section prompt) +
-   optionally raise tail to ~4000 chars for hosted runs. This is the single
-   biggest coherence lever that doesn't depend on model choice.
+2. STORY-TOGETHER UPGRADE (pipeline-side continuity)        [done 2026-08-21]
+   Shipped: generate_day_recap() at each day boundary (temp 0.2, ≤700 tok),
+   digest injected as **STORY SO FAR** into every section prompt (capped
+   ~8000 chars, newest kept); recaps stored in checkpoints + session state;
+   GRAVEDANCER_SECTION_TAIL_CHARS (default 1800, TUI forces 4000 hosted).
+   Recap failure degrades gracefully to tail-only continuity.
 
 3. PER-DAY MODEL ROUTING
    We already route per-run. Next: per-stage models (outline on strongest

@@ -1,3 +1,4 @@
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -6,6 +7,7 @@ from unittest.mock import Mock, patch
 from src.utils.prompt_generator import PromptGenerator
 from src.utils.storage import EpisodeStorage
 from src.utils.streaming_ui import STREAM_PANEL_KEYS, build_progress_state, build_stream_runtime, finalize_stream_state, render_cached_outline_banner, render_stream_update, reset_stream_panels
+from src.utils import story_generator as story_generator_module
 from src.utils.story_generator import OUTLINE_MAX_TOKENS, SECTION_MAX_TOKENS, GenerationCancelled, StoryGenerator, outline_token_budget
 from src.utils.concepts import build_concept_context_prompt, build_concept_extraction_prompt, try_parse_full_episode_concept, VALID_TONES
 from src.utils.prompt_schema import STORY_MULTI_PASS_RULES, STORY_STRUCTURE_REQUIREMENTS, validate_outline_quality, validate_outline_structure, validate_story_prompt_inputs
@@ -651,3 +653,180 @@ Storyboard frame with harsh contrast and crimson atmosphere.
 
         self.assertEqual(story, checkpoint)
         ollama.generate_stream.assert_not_called()
+
+    # ── story-together continuity (running recap) ────────────────────────
+
+    TWO_DAY_OUTLINE = (
+        "## EPISODE ARC\nA two-day hunt that turns the stalker into the staked.\n\n"
+        "## DAY 1: Ashfall\n"
+        "- Purpose: Establish the hunt.\n"
+        "- Chapter 1: Beat 1: Arrival. Beat 2: Tracks. Beat 3: Tension. Beat 4: Move.\n"
+        "- Chapter 2: Beat 1: Pursuit. Beat 2: Trap. Beat 3: Counter. Beat 4: Escape.\n"
+        "- Chapter 3: Beat 1: Contact. Beat 2: Threat. Beat 3: Choice. Beat 4: Retreat.\n"
+        "- Chapter 4: Beat 1: Camp. Beat 2: Signal. Beat 3: Watch. Beat 4: Dawn.\n"
+        "- Chapter 5: Beat 1: Choice. Beat 2: Departure. Beat 3: Cost. Beat 4: Trail.\n"
+        "- Ending hook: The trail continues.\n\n"
+        "## DAY 2: Ambush\n"
+        "- Purpose: Escalate into confrontation.\n"
+        "- Chapter 1: Beat 1: Canyon. Beat 2: Herd. Beat 3: Spring. Beat 4: Collapse.\n"
+        "- Chapter 2: Beat 1: Ridge. Beat 2: Cover. Beat 3: Terrain. Beat 4: Hunt.\n"
+        "- Chapter 3: Beat 1: Wounded. Beat 2: Confusion. Beat 3: Press. Beat 4: Trap.\n"
+        "- Chapter 4: Beat 1: Duel. Beat 2: Philosophy. Beat 3: Cruelty. Beat 4: Yield.\n"
+        "- Chapter 5: Beat 1: Open ground. Beat 2: Sacrifice. Beat 3: Wound. Beat 4: Begin.\n"
+        "- Ending hook: The Jedi turns back."
+    )
+
+    def _recap_test_kwargs(self) -> dict:
+        return dict(
+            model="mock-model",
+            jedi_details={"name": "Vael Tirin"},
+            setting="Ryloth frontier",
+            tone_focus=["dread"],
+            additional_instructions="",
+            temperature=0.6,
+        )
+
+    def test_section_prompt_includes_story_so_far_when_provided(self):
+        story_gen = StoryGenerator(Mock())
+        kwargs = dict(
+            title="Continuity Test",
+            num_days=2,
+            outline="## EPISODE ARC\nArc.",
+            day_number=2,
+            section_index=1,
+            section_count=5,
+            section_outline="- Chapter 1: Beat 1: A. Beat 2: B. Beat 3: C. Beat 4: D.",
+            prior_text="Earlier prose tail.",
+            day_outline="- Chapter 1: Beat 1: A. Beat 2: B. Beat 3: C. Beat 4: D.",
+            jedi_details={"name": "Vael Tirin"},
+            setting="Ryloth frontier",
+            tone_focus=["dread"],
+            additional_instructions="",
+        )
+        plain = story_gen.build_section_expansion_prompt(**kwargs)
+        enriched = story_gen.build_section_expansion_prompt(**kwargs, story_so_far="Qymaen lost an eye; the Jedi fled north.")
+
+        self.assertNotIn("**STORY SO FAR", plain)
+        self.assertIn("**STORY SO FAR", enriched)
+        self.assertIn("Qymaen lost an eye", enriched)
+        self.assertIn("never contradict earlier days", enriched)
+
+    def test_multi_pass_generates_running_recap_and_injects_it(self):
+        ollama = Mock()
+        outline = self.TWO_DAY_OUTLINE
+        ollama.generate_stream.side_effect = [
+            iter([f"Day {day} section {section} prose."]) for day in (1, 2) for section in range(1, 6)
+        ]
+        ollama.generate.side_effect = ["Recap of day one.", "Recap of day two."]
+        story_gen = StoryGenerator(ollama)
+        checkpoints = []
+
+        story = story_gen.generate_episode_story_multi_pass(
+            title="Recap Injection Test",
+            num_days=2,
+            outline=outline,
+            checkpoint_callback=lambda day, text, recap: checkpoints.append((day, recap)),
+            **self._recap_test_kwargs(),
+        )
+
+        self.assertIn("## DAY 1:", story)
+        self.assertIn("## DAY 2:", story)
+        self.assertEqual(ollama.generate.call_count, 2)
+        first_recap_prompt = ollama.generate.call_args_list[0].kwargs["prompt"]
+        second_recap_prompt = ollama.generate.call_args_list[1].kwargs["prompt"]
+        self.assertIn("Summarize Day 1", first_recap_prompt)
+        self.assertIn("Summarize Day 2", second_recap_prompt)
+        prompts = [call.kwargs["prompt"] for call in ollama.generate_stream.call_args_list]
+        day_one_prompts = prompts[0:5]
+        day_two_prompts = prompts[5:10]
+        self.assertTrue(all("**STORY SO FAR" not in prompt for prompt in day_one_prompts))
+        self.assertTrue(all("**STORY SO FAR" in prompt and "Recap of day one." in prompt for prompt in day_two_prompts))
+        self.assertEqual(checkpoints[0], (1, "Recap of day one."))
+        self.assertEqual(checkpoints[1], (2, "Recap of day two."))
+
+    def test_multi_pass_survives_recap_failure(self):
+        ollama = Mock()
+        outline = self.TWO_DAY_OUTLINE
+        ollama.generate_stream.side_effect = [
+            iter([f"Day {day} section {section} prose."]) for day in (1, 2) for section in range(1, 6)
+        ]
+        ollama.generate.side_effect = RuntimeError("recap backend down")
+        story_gen = StoryGenerator(ollama)
+
+        with self.assertLogs("src.utils.story_generator", level="WARNING") as logs:
+            story = story_gen.generate_episode_story_multi_pass(
+                title="Recap Failure Test",
+                num_days=2,
+                outline=outline,
+                **self._recap_test_kwargs(),
+            )
+
+        self.assertIn("## DAY 1:", story)
+        self.assertIn("## DAY 2:", story)
+        self.assertTrue(any("day recap failed" in entry for entry in logs.output))
+
+    def test_multi_pass_recaps_disabled_skips_model_calls(self):
+        ollama = Mock()
+        outline = self.TWO_DAY_OUTLINE
+        ollama.generate_stream.side_effect = [
+            iter([f"Day {day} section {section} prose."]) for day in (1, 2) for section in range(1, 6)
+        ]
+        story_gen = StoryGenerator(ollama)
+
+        with patch.dict("os.environ", {"GRAVEDANCER_STORY_SO_FAR": "0"}):
+            story = story_gen.generate_episode_story_multi_pass(
+                title="Recap Disabled Test",
+                num_days=2,
+                outline=outline,
+                **self._recap_test_kwargs(),
+            )
+
+        self.assertIn("## DAY 2:", story)
+        ollama.generate.assert_not_called()
+        prompts = [call.kwargs["prompt"] for call in ollama.generate_stream.call_args_list]
+        self.assertTrue(all("**STORY SO FAR" not in prompt for prompt in prompts))
+
+    def test_multi_pass_reuses_stored_recaps_without_model_calls(self):
+        ollama = Mock()
+        story_gen = StoryGenerator(ollama)
+        outline = (
+            "## EPISODE ARC\nA test arc.\n\n## DAY 1: Ashfall\n"
+            "- Purpose: Establish the hunt.\n"
+            "- Chapter 1: Beat 1: Arrival. Beat 2: Tracks. Beat 3: Tension. Beat 4: Move.\n"
+            "- Chapter 2: Beat 1: Pursuit. Beat 2: Trap. Beat 3: Counter. Beat 4: Escape.\n"
+            "- Chapter 3: Beat 1: Contact. Beat 2: Threat. Beat 3: Choice. Beat 4: Retreat.\n"
+            "- Chapter 4: Beat 1: Camp. Beat 2: Signal. Beat 3: Watch. Beat 4: Dawn.\n"
+            "- Chapter 5: Beat 1: Choice. Beat 2: Departure. Beat 3: Cost. Beat 4: Trail.\n"
+            "- Ending hook: The trail continues."
+        )
+        checkpoint = "## DAY 1: Ashfall\n\nRecovered prose."
+
+        story = story_gen.generate_episode_story_multi_pass(
+            model="mock-model",
+            title="Resume Recap Test",
+            num_days=1,
+            jedi_details={"name": "Vael Tirin"},
+            setting="Ryloth frontier",
+            tone_focus=["dread"],
+            additional_instructions="",
+            temperature=0.6,
+            outline=outline,
+            day_drafts={1: checkpoint},
+            day_recaps={1: "Stored day one recap."},
+            draft_only=True,
+        )
+
+        self.assertEqual(story, checkpoint)
+        ollama.generate_stream.assert_not_called()
+        ollama.generate.assert_not_called()
+
+    def test_section_tail_chars_env_override(self):
+        with patch.dict("os.environ", {"GRAVEDANCER_SECTION_TAIL_CHARS": "4000"}):
+            self.assertEqual(story_generator_module._section_tail_chars(), 4000)
+        env_copy = os.environ.copy()
+        env_copy.pop("GRAVEDANCER_SECTION_TAIL_CHARS", None)
+        with patch.dict("os.environ", env_copy, clear=True):
+            self.assertEqual(
+                story_generator_module._section_tail_chars(),
+                story_generator_module.SECTION_TAIL_CHARS,
+            )
