@@ -29,6 +29,7 @@ import subprocess
 import sys
 import time
 import uuid
+import webbrowser
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -105,6 +106,84 @@ def port_of(base: str, default: int = 1234) -> int:
     except ValueError:
         return default
 
+
+_HTML_CSS = """
+body { font-family: Georgia, 'Times New Roman', serif; background: #14171c;
+       color: #d8d4c8; max-width: 46rem; margin: 0 auto; padding: 2.5rem 1.5rem 5rem; }
+h1 { font-size: 1.9rem; color: #e8ddc0; letter-spacing: .02em; margin-bottom: .2rem; }
+.meta { color: #8a94a6; font-size: .85rem; font-family: ui-monospace, monospace;
+        margin-bottom: 2rem; border-bottom: 1px solid #2a2f3a; padding-bottom: 1rem; }
+h2 { color: #c9a86a; font-size: 1.25rem; margin-top: 2.8rem; border-bottom:
+     1px dashed #3a4050; padding-bottom: .3rem; }
+h3 { color: #9fb4cc; font-size: 1.02rem; margin-top: 1.8rem; }
+.wc { float: right; color: #5c6678; font-size: .75rem; font-family: ui-monospace, monospace; }
+p { line-height: 1.75; margin: .9rem 0; text-align: justify; }
+.total { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid #2a2f3a;
+         color: #8a94a6; font-family: ui-monospace, monospace; font-size: .85rem; }
+"""
+
+
+def write_episode_html(base_path: Path, episode_id: str) -> Optional[Path]:
+    """Render an episode as a styled HTML reading view.
+
+    Returns the written file path, or None when the episode has no story yet.
+    The file lands inside the episode directory as preview.html.
+    """
+    import html as _html
+
+    ep_dir = base_path / episode_id
+    story_path = ep_dir / "story.md"
+    if not story_path.is_file():
+        return None
+    story = story_path.read_text(encoding="utf-8")
+    meta_path = ep_dir / "metadata.json"
+    try:
+        metadata = json.loads(meta_path.read_text(encoding="utf-8"))
+    except Exception:
+        metadata = {}
+
+    title = _html.escape(str(metadata.get("title", episode_id)))
+    jedi = _html.escape(str(metadata.get("target_jedi_name")
+                            or metadata.get("jedi_name") or "?"))
+    model = _html.escape(str(metadata.get("model_story") or metadata.get("model") or "?"))
+    tone = ", ".join(metadata.get("tone_focus", []) or [])
+    meta_line = (f"Days: {metadata.get('num_days', '?')} · Jedi: {jedi} · "
+                 f"Tone: {_html.escape(tone) or '?'} · Model: {model}")
+
+    body_parts: List[str] = []
+    total_words = 0
+    blocks = re.split(r"(?=^## DAY \d+:)", story, flags=re.MULTILINE)
+    day_re = re.compile(r"^## DAY (\d+):\s*(.+)$", re.MULTILINE)
+    for block in blocks:
+        m = day_re.match(block)
+        if not m:
+            continue
+        day_words = len(block.split())
+        total_words += day_words
+        body_parts.append(
+            f"<h2>Day {m.group(1)} — {_html.escape(m.group(2).strip())}"
+            f"<span class='wc'>{day_words:,} words</span></h2>"
+        )
+        prose = day_re.sub("", block, count=1)
+        prose = re.sub(r"^### Chapter \d+:.*$", "", prose, flags=re.MULTILINE)
+        for para in [p.strip() for p in prose.split("\n\n") if p.strip()]:
+            body_parts.append(f"<p>{_html.escape(para).replace(chr(10), '<br>')}</p>")
+    if not body_parts:
+        return None
+
+    html_doc = (
+        "<!doctype html><html><head><meta charset='utf-8'>"
+        f"<title>{title}</title><style>{_HTML_CSS}</style></head><body>"
+        f"<h1>{title}</h1><div class='meta'>{meta_line}</div>"
+        + "\n".join(body_parts)
+        + f"<div class='total'>Total: {total_words:,} words across "
+          f"{metadata.get('num_days', '?')} days · Gravedancer → General</div>"
+        "</body></html>"
+    )
+    out = ep_dir / "preview.html"
+    out.write_text(html_doc, encoding="utf-8")
+    return out
+
 _EPISODE_ID_RE = re.compile(r"Episode saved:\s*(\S+)")
 
 _ANSI_RE = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]|\x1b\][^\x07]*\x07|\x1b\][^\x07]*\x1b\\")
@@ -174,7 +253,7 @@ class RunProgress:
         r"\[day-(\d+)-section-(\d+)\].*?~([\d,]+) tokens"
     )
     _RE_OUTLINE_TOKENS = re.compile(r"\[outline\].*?~([\d,]+) tokens")
-    _RE_DAY_DONE = re.compile(r"\[day\] Day (\d+) complete")
+    _RE_DAY_DONE = re.compile(r"\[day\] Day (\d+) complete \(([\d,]+) chars\)")
     _RE_CHECKPOINT_REUSE = re.compile(r"\[checkpoint\] Reusing checkpoint for Day (\d+)")
     _RE_STORY_DONE = re.compile(r"Story generated \(")
     _RE_CHAPTERS = re.compile(r"Extracted (\d+) chapters")
@@ -187,7 +266,7 @@ class RunProgress:
         self.pct = 0.0
         self.stage = "starting"
         self.chapters_total = 0
-        # day -> {"sections": n, "done": bool, "tokens": {sec: tokens}}
+        # day -> {"sections": n, "done": bool, "tokens": {sec: tokens}, "chars": int}
         self.days: Dict[int, Dict[str, Any]] = {}
         self.outline_tokens = 0
         self.current_day = 0
@@ -195,7 +274,8 @@ class RunProgress:
         self.chapter_prompts_done = 0
 
     def _day(self, day: int) -> Dict[str, Any]:
-        return self.days.setdefault(day, {"sections": 0, "done": False, "tokens": {}})
+        return self.days.setdefault(
+            day, {"sections": 0, "done": False, "tokens": {}, "chars": 0})
 
     @property
     def tokens_total(self) -> int:
@@ -203,6 +283,17 @@ class RunProgress:
         for info in self.days.values():
             total += sum(info["tokens"].values())
         return total
+
+    def words_estimate(self) -> int:
+        """Estimated finished words: exact-ish for completed days (chars/5),
+        token-derived (~tokens*0.8) for in-flight sections."""
+        words = 0
+        for day, info in self.days.items():
+            if info["done"] and info["chars"]:
+                words += info["chars"] // 5
+            else:
+                words += sum(info["tokens"].values()) * 4 // 5
+        return words
 
     def update(self, line: str) -> bool:
         """Consume one output line; returns True when the display changed."""
@@ -244,6 +335,8 @@ class RunProgress:
             day = int(m.group(1))
             info = self._day(day)
             info["done"] = True
+            if m.lastindex and m.lastindex >= 2:
+                info["chars"] = max(info["chars"], int(m.group(2).replace(",", "")))
             for sec in range(1, info["sections"] + 1):
                 info["tokens"].setdefault(sec, info["tokens"].get(sec, 0))
             self.stage = f"story · day {day}/{self.num_days} complete"
@@ -278,7 +371,7 @@ class RunProgress:
         mm, ss = divmod(rem, 60)
         lines = [
             f"[bold]{_progress_bar(self.pct)}[/] {self.pct:3.0f}%  · "
-            f"runtime {hh}:{mm:02d}:{ss:02d}  · ~{self.tokens_total:,} tok",
+            f"runtime {hh}:{mm:02d}:{ss:02d}  · ~{self.words_estimate():,} words",
         ]
 
         def mark(done: bool, active: bool) -> str:
@@ -294,17 +387,18 @@ class RunProgress:
 
         if self.num_days:
             chips = []
-            any_story = bool(self.days) or self.pct >= 10
             for day in range(1, self.num_days + 1):
                 info = self.days.get(day)
                 done = bool(info and info["done"])
                 active = (day == self.current_day and not done
                           and self.stage.startswith("story"))
                 chip = f"{mark(done, active)} D{day}"
-                if info and info["tokens"]:
+                if done and info["chars"]:
+                    chip += f" ~{info['chars'] // 5:,}w"
+                elif info and info["tokens"]:
                     tok = sum(info["tokens"].values())
                     if tok:
-                        chip += f" {tok / 1000:.1f}k"
+                        chip += f" {tok / 1000:.1f}k tok"
                 elif active:
                     chip += " …"
                 chips.append(chip)
@@ -346,6 +440,7 @@ class EpisodeViewerScreen(Screen):
         Binding("1", "view_story", "Story"),
         Binding("2", "view_prompts", "Prompts"),
         Binding("3", "view_info", "Info"),
+        Binding("b", "open_in_browser", "Browser"),
     ]
 
     VIEWS = ("story", "prompts", "info")
@@ -556,6 +651,19 @@ class EpisodeViewerScreen(Screen):
         self.view_mode = mode
         self._render_view()
 
+    def action_open_in_browser(self) -> None:
+
+        if not self._current_id:
+            return
+        path = write_episode_html(SETTINGS.storage_path, self._current_id)
+        if path is None:
+            self.app.call_from_thread(
+                self.query_one("#ep-meta", Static).update,
+                "[yellow]No story.md to preview.[/]",
+            )
+            return
+        webbrowser.open(path.as_uri())
+
     def action_close_viewer(self) -> None:
         self.app.pop_screen()
 
@@ -698,6 +806,7 @@ class GravedancerTUI(App):
         Binding("o", "open_last_episode", "Last episode"),
         Binding("n", "random_seed", "Random seed"),
         Binding("p", "toggle_progress", "Progress panel"),
+        Binding("b", "open_in_browser", "Open in browser"),
     ]
 
     def __init__(self) -> None:
@@ -1472,6 +1581,33 @@ class GravedancerTUI(App):
         episode_id = finished[-1].episode_id
         self._set_status(f"Opening [bold cyan]{episode_id}[/] · esc returns")
         self.app.push_screen(EpisodeViewerScreen(highlight_episode=episode_id))
+
+    def _latest_episode_id(self) -> Optional[str]:
+        finished = [self.runs[rid] for rid in self.run_order if self.runs[rid].episode_id]
+        if finished:
+            return finished[-1].episode_id
+        try:
+            episodes = sorted(
+                (p for p in SETTINGS.storage_path.iterdir()
+                 if p.is_dir() and (p / "metadata.json").is_file()),
+                key=lambda p: p.name, reverse=True,
+            )
+            return episodes[0].name if episodes else None
+        except OSError:
+            return None
+
+    def action_open_in_browser(self) -> None:
+
+        episode_id = self._latest_episode_id()
+        if not episode_id:
+            self._set_status("[yellow]No episodes to preview yet.[/]")
+            return
+        path = write_episode_html(SETTINGS.storage_path, episode_id)
+        if path is None:
+            self._set_status("[yellow]Episode has no story.md yet.[/]")
+            return
+        webbrowser.open(path.as_uri())
+        self._set_status(f"[green]Opened in browser:[/] {path}")
 
     # ── streaming / stopping ─────────────────────────────────────────────
 

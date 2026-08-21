@@ -1,6 +1,8 @@
 """Tests for the TUI RunProgress parser."""
 
+import json
 import unittest
+from pathlib import Path
 
 from tui import RunProgress, _progress_bar
 
@@ -140,6 +142,53 @@ class TestRunProgressTree(unittest.TestCase):
         p = self.feed(LINES)  # full sequence incl. save
         tree = p.render_tree(4000)
         self.assertIn("30/30", tree)
+
+    def test_day_word_estimates_from_chars(self):
+        p = RunProgress()
+        for line in ["  Days:   6",
+                     "  [day] Day 1 complete (25,000 chars).",
+                     "  [section] Day 2: expanding section 1/5",
+                     "  [day-2-section-1] ... | ~5,000 tokens | ~8.0 tok/s"]:
+            p.update(line)
+        # D1: 25000/5 = 5000 words; D2 in-flight: 5000*4/5 = 4000
+        self.assertEqual(p.words_estimate(), 9000)
+        tree = p.render_tree(120)
+        self.assertIn("~5,000w", tree)
+        self.assertIn("~9,000 words", tree)
+
+
+class TestEpisodeHtml(unittest.TestCase):
+    def test_writes_styled_preview_with_word_counts(self):
+        import tempfile
+
+        from tui import write_episode_html
+
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            ep = base / "episode-test" / "story.md"
+            ep.parent.mkdir()
+            ep.write_text(
+                "## DAY 1: Red Sun Landing\n\n### Chapter 1: Shot Out of the Sky\n\n"
+                "The gunship broke apart at altitude.\n\n"
+                "## DAY 2: The Cage\n\nTwilight pooled beneath the trees.\n",
+                encoding="utf-8",
+            )
+            (ep.parent / "metadata.json").write_text(json.dumps({
+                "title": "The Ashen Chain", "num_days": 2,
+                "target_jedi_name": "Nyx Vex", "tone_focus": ["Survival horror"],
+                "model_story": "test-model",
+            }), encoding="utf-8")
+            out = write_episode_html(base, "episode-test")
+            self.assertIsNotNone(out)
+            html = out.read_text(encoding="utf-8")
+            self.assertIn("The Ashen Chain", html)
+            self.assertIn("Day 1 — Red Sun Landing", html)
+            self.assertIn("words</span>", html)
+            self.assertIn("Total:", html)
+            self.assertIn("Nyx Vex", html)
+            # missing story -> None
+            (base / "episode-empty").mkdir()
+            self.assertIsNone(write_episode_html(base, "episode-empty"))
 
 
 if __name__ == "__main__":
