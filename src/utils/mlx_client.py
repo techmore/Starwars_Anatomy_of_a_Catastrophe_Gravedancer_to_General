@@ -215,15 +215,20 @@ def _urlopen_with_retries(request: urllib.request.Request, attempts: int = 3, ti
     """Open a URL with bounded connect-retries.
 
     Retries transient connection failures (refused/reset/timeout) with
-    exponential backoff. HTTPError responses (4xx/5xx) are server answers,
-    not transport faults, so they surface immediately.
+    exponential backoff. Also retries intermittent upstream errors on the
+    Nous edge (400/408/429/5xx) — long streaming calls occasionally fail
+    there with a server hiccup that a retry resolves.
     """
     last_exc: Exception = RuntimeError("unreachable")
     for attempt in range(attempts):
         try:
             return urllib.request.urlopen(request, timeout=timeout)
-        except urllib.error.HTTPError:
-            raise
+        except urllib.error.HTTPError as exc:
+            if exc.code not in (400, 408, 429, 500, 502, 503, 522, 524):
+                raise
+            last_exc = exc
+            if attempt < attempts - 1:
+                time.sleep(0.5 * (2 ** attempt))
         except (urllib.error.URLError, TimeoutError, ConnectionError, OSError) as exc:
             last_exc = exc
             if attempt < attempts - 1:
