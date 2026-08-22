@@ -111,6 +111,7 @@ def main(
     generate_images: bool = False,
     image_mode: str = "day",
     max_images: int | None = None,
+    generate_refs: bool = False,
 ):
     _install_cancel_handler()
     console = Console() if RICH_AVAILABLE else None
@@ -462,6 +463,20 @@ def main(
             print("  Draw Things offline — skipping image generation (non-fatal).")
             LOGGER.warning("image phase skipped: draw things offline")
         else:
+            # ── Character/location reference sheets (opt-in via --refs) ──
+            if generate_refs:
+                print("\n  Generating character reference sheets...")
+                from src.utils.char_refs import generate_character_refs
+                ref_results = generate_character_refs(
+                    storage, dt_client, episode_id, metadata)
+                ok_refs = sum(1 for r in ref_results if "error" not in r)
+                print(f"  Reference sheets: {ok_refs}/{len(ref_results)} generated")
+                for r in ref_results:
+                    if "error" in r:
+                        print(f"    FAILED {r['shot']}: {r['error']}")
+                    else:
+                        print(f"    {r['label']} -> {r['path']}")
+
             def _img_progress(msg: str) -> None:
                 print(f"  {msg}", flush=True)
 
@@ -598,6 +613,11 @@ if __name__ == "__main__":
         "--max-images", type=int, default=None,
         help="Generation budget including the cover (e.g. --max-images 4 = cover + 3).",
     )
+    parser.add_argument(
+        "--refs", action="store_true", default=False,
+        help="Generate character/location reference sheets before image generation "
+             "(saved to <episode>/refs/, used as multi-ref anchors in Draw Things).",
+    )
     args = parser.parse_args()
     try:
         result = main(
@@ -610,6 +630,7 @@ if __name__ == "__main__":
         generate_images=args.images,
         image_mode=args.image_mode,
         max_images=args.max_images,
+        generate_refs=args.refs,
     )
     except GenerationCancelled as exc:
         print(f"\n⚠ Cancelled before a checkpoint existed: {exc}")
