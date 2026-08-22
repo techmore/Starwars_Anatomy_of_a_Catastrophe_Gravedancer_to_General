@@ -159,6 +159,15 @@ HARNESSES: list[Harness] = [
         note="opencode CLI · ox-alpha Free & 80+ hosted models · temp/max_tokens ignored by the CLI",
     ),
     Harness(
+        id="nous-direct",
+        name="Nous Inference API",
+        kind="openai_http",
+        default_base="https://inference-api.nousresearch.com/v1",
+        platforms=_DARWIN_LINUX,
+        note="Direct OpenAI-compatible API · uses NOUS_API_KEY · runs ox-alpha & hosted models without the CLI",
+        env_url_override="GRAVEDANCER_NOUS_URL",
+    ),
+    Harness(
         id="native-mlx",
         name="Native MLX (in-process)",
         kind="mlx_native",

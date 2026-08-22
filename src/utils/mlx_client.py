@@ -374,6 +374,70 @@ class MLXClient:
             return {"available": False, "model_loaded": False, "models": [], "error": str(exc)}
 
 
+    def _generate_openai_http_stream(
+        self, base_url: str, api_key: str, model: str,
+        prompt: str, system: str | None,
+        temperature: float, top_p: float, max_tokens: int,
+        label: str = "OpenAI-compatible API",
+    ) -> Iterable[str]:
+        """Yield deltas from any OpenAI-compatible /chat/completions endpoint.
+
+        Used for the Nous Inference API harness (NOUS_API_KEY) and reusable
+        for any keyed remote endpoint.
+        """
+        if not api_key:
+            raise RuntimeError(
+                f"{label}: no API key configured. Set NOUS_API_KEY (or the "
+                "relevant key env var) and retry.")
+        url = f"{base_url.rstrip('/')}/chat/completions"
+        messages = []
+        if system:
+            messages.append({"role": "system", "content": system})
+        messages.append({"role": "user", "content": prompt})
+        payload = json.dumps({
+            "model": model,
+            "messages": messages,
+            "temperature": temperature,
+            "top_p": top_p,
+            "max_tokens": max_tokens,
+            "stream": True,
+        }).encode("utf-8")
+        request = urllib.request.Request(
+            url, data=payload,
+            headers={
+                "Content-Type": "application/json",
+                "Accept": "text/event-stream",
+                "Authorization": f"Bearer {api_key}",
+                # Nous' edge (Cloudflare) rejects default urllib UA (error 1010)
+                "User-Agent": "GravedancerPipeline/1.0",
+            },
+            method="POST",
+        )
+        LOGGER.info("using %s model=%s prompt_chars=%s", label, model, len(prompt or ""))
+        try:
+            with _urlopen_with_retries(request, timeout=max(180, max_tokens // 2)) as response:
+                for raw_line in response:
+                    line = raw_line.decode("utf-8") if isinstance(raw_line, bytes) else raw_line
+                    line = line.strip()
+                    if not line or not line.startswith("data:"):
+                        continue
+                    line = line[5:].strip()
+                    if line == "[DONE]":
+                        return
+                    try:
+                        event = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    choices = event.get("choices") or []
+                    if not choices or not isinstance(choices[0], dict):
+                        continue
+                    delta = choices[0].get("delta") or {}
+                    text = delta.get("content")
+                    if text:
+                        yield _strip_think_blocks(str(text))
+        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+            raise RuntimeError(f"{label} streaming request failed: {exc}") from exc
+
     def _generate_lmstudio_stream(
         self, model: str, prompt: str, system: str | None,
         temperature: float, top_p: float, max_tokens: int,
@@ -735,6 +799,18 @@ class MLXClient:
             if normalized_model == BONSAI_1BIT_MODEL:
                 yield from self._generate_bonsai_stream(
                     normalized_model, prompt, system, temperature, top_p, max_tokens
+                )
+                return
+            if normalized_model.startswith("nous:"):
+                yield from self._generate_openai_http_stream(
+                    base_url=os.environ.get(
+                        "GRAVEDANCER_NOUS_URL",
+                        "https://inference-api.nousresearch.com/v1"),
+                    api_key=os.environ.get("NOUS_API_KEY", ""),
+                    model=normalized_model[len("nous:"):],
+                    prompt=prompt, system=system,
+                    temperature=temperature, top_p=top_p, max_tokens=max_tokens,
+                    label="Nous Inference API",
                 )
                 return
             if self._has_python_api():
