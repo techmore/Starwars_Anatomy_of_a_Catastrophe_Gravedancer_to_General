@@ -9,6 +9,9 @@ never fail at bookkeeping.
 from __future__ import annotations
 
 import logging
+import os
+import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +23,12 @@ from src.utils.export_formats import (
 )
 
 LOGGER = logging.getLogger(__name__)
+
+
+def _auto_open_enabled() -> bool:
+    """True when exports should auto-open on completion (macOS, not disabled)."""
+    flag = os.environ.get("GRAVEDANCER_AUTO_OPEN", "1").strip().lower()
+    return flag not in {"0", "false", "off"} and sys.platform == "darwin"
 
 
 def write_reading_formats(
@@ -70,4 +79,13 @@ def write_reading_formats(
             LOGGER.info("export written path=%s", path)
         except Exception as exc:
             LOGGER.warning("export failed name=%s error=%s", filename, exc)
+
+    if written and _auto_open_enabled():
+        # Open the richest reading format first (epub > html > txt).
+        best = written[-1]
+        try:
+            subprocess.Popen(["open", best])
+            LOGGER.info("export auto-opened path=%s", best)
+        except OSError as exc:
+            LOGGER.warning("auto-open failed path=%s error=%s", best, exc)
     return written
