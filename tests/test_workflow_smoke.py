@@ -42,6 +42,15 @@ from src.utils.streaming_ui import (
 )
 
 
+def _disable_section_continuation():
+    """Context manager patching the underlength enforcement off for tests."""
+    return patch.multiple(
+        story_generator_module,
+        SECTION_MIN_WORD_RATIO=0.0,
+        SECTION_CONTINUE_ATTEMPTS=0,
+    )
+
+
 class TestWorkflowSmoke(unittest.TestCase):
     def test_outline_budget_is_bounded_for_local_pilot_runs(self):
         self.assertLessEqual(OUTLINE_MAX_TOKENS, 5000)
@@ -606,6 +615,10 @@ Storyboard frame with harsh contrast and crimson atmosphere.
             self.assertIsNotNone(archive_bytes)
 
     def test_multi_pass_story_generation_emits_progress_updates(self):
+        with _disable_section_continuation():
+            self._run_emits_progress()
+
+    def _run_emits_progress(self):
         ollama = Mock()
         ollama.generate_stream.side_effect = [
             iter([
@@ -673,7 +686,8 @@ Storyboard frame with harsh contrast and crimson atmosphere.
         )
         ollama.generate_stream.side_effect = [[rebuilt_outline]] + [["Recovered prose."]] * 5
 
-        story = story_gen.generate_episode_story_multi_pass(
+        with _disable_section_continuation():
+            story = story_gen.generate_episode_story_multi_pass(
             model="mock-model",
             title="Cached Outline Test",
             num_days=1,
@@ -681,8 +695,8 @@ Storyboard frame with harsh contrast and crimson atmosphere.
             setting="Ryloth frontier",
             tone_focus=["dread"],
             additional_instructions="",
-            outline="## DAY 1: Missing Arc and Chapters",
-        )
+                outline="## DAY 1: Missing Arc and Chapters",
+            )
 
         self.assertIn("## DAY 1: Ashfall", story)
         self.assertEqual(ollama.generate_stream.call_count, 6)
@@ -786,13 +800,14 @@ Storyboard frame with harsh contrast and crimson atmosphere.
         story_gen = StoryGenerator(ollama)
         checkpoints = []
 
-        story = story_gen.generate_episode_story_multi_pass(
-            title="Recap Injection Test",
-            num_days=2,
-            outline=outline,
-            checkpoint_callback=lambda day, text, recap: checkpoints.append((day, recap)),
-            **self._recap_test_kwargs(),
-        )
+        with _disable_section_continuation():
+            story = story_gen.generate_episode_story_multi_pass(
+                title="Recap Injection Test",
+                num_days=2,
+                outline=outline,
+                checkpoint_callback=lambda day, text, recap: checkpoints.append((day, recap)),
+                **self._recap_test_kwargs(),
+            )
 
         self.assertIn("## DAY 1:", story)
         self.assertIn("## DAY 2:", story)
@@ -819,12 +834,13 @@ Storyboard frame with harsh contrast and crimson atmosphere.
         story_gen = StoryGenerator(ollama)
 
         with self.assertLogs("src.utils.story_generator", level="WARNING") as logs:
-            story = story_gen.generate_episode_story_multi_pass(
-                title="Recap Failure Test",
-                num_days=2,
-                outline=outline,
-                **self._recap_test_kwargs(),
-            )
+            with _disable_section_continuation():
+                story = story_gen.generate_episode_story_multi_pass(
+                    title="Recap Failure Test",
+                    num_days=2,
+                    outline=outline,
+                    **self._recap_test_kwargs(),
+                )
 
         self.assertIn("## DAY 1:", story)
         self.assertIn("## DAY 2:", story)
@@ -839,12 +855,13 @@ Storyboard frame with harsh contrast and crimson atmosphere.
         story_gen = StoryGenerator(ollama)
 
         with patch.dict("os.environ", {"GRAVEDANCER_STORY_SO_FAR": "0"}):
-            story = story_gen.generate_episode_story_multi_pass(
-                title="Recap Disabled Test",
-                num_days=2,
-                outline=outline,
-                **self._recap_test_kwargs(),
-            )
+            with _disable_section_continuation():
+                story = story_gen.generate_episode_story_multi_pass(
+                    title="Recap Disabled Test",
+                    num_days=2,
+                    outline=outline,
+                    **self._recap_test_kwargs(),
+                )
 
         self.assertIn("## DAY 2:", story)
         ollama.generate.assert_not_called()
@@ -912,18 +929,19 @@ Storyboard frame with harsh contrast and crimson atmosphere.
         ollama.generate.side_effect = ["Recap."]
         story_gen = StoryGenerator(ollama)
 
-        story_gen.generate_episode_story_multi_pass(
-            model="story-model",
-            recap_model="recap-model",
-            title="Recap Routing Test",
-            num_days=1,
-            jedi_details={"name": "Vael Tirin"},
-            setting="Ryloth frontier",
-            tone_focus=["dread"],
-            additional_instructions="",
-            temperature=0.6,
-            outline=outline,
-        )
+        with _disable_section_continuation():
+            story_gen.generate_episode_story_multi_pass(
+                model="story-model",
+                recap_model="recap-model",
+                title="Recap Routing Test",
+                num_days=1,
+                jedi_details={"name": "Vael Tirin"},
+                setting="Ryloth frontier",
+                tone_focus=["dread"],
+                additional_instructions="",
+                temperature=0.6,
+                outline=outline,
+            )
 
         self.assertEqual(ollama.generate.call_count, 1)
         self.assertEqual(ollama.generate.call_args.kwargs["model"], "recap-model")

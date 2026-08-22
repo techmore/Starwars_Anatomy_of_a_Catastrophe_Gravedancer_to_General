@@ -47,6 +47,14 @@ SECTION_MAX_TOKENS = int(os.environ.get("GRAVEDANCER_SECTION_MAX_TOKENS", "4500"
 # memory-bound 1800-char ceiling; hosted runs raise it via env (the TUI sets
 # 4000 for OpenCode) so chapters see more of the immediately preceding scene.
 SECTION_TAIL_CHARS = int(os.environ.get("GRAVEDANCER_SECTION_TAIL_CHARS", "1800"))
+# Underlength enforcement: a section that lands below this fraction of its
+# per-section word target triggers a continuation pass ("the section stops
+# too early; keep going from the last paragraph") until it reaches length or
+# attempts run out. 0.55 tolerates normal model variance; 0.4 catches the
+# EOS-truncation / terse-response failure mode that produced ~600-word
+# chapters against a ~6,900-word target.
+SECTION_MIN_WORD_RATIO = float(os.environ.get("GRAVEDANCER_SECTION_MIN_WORD_RATIO", "0.55"))
+SECTION_CONTINUE_ATTEMPTS = int(os.environ.get("GRAVEDANCER_SECTION_CONTINUE_ATTEMPTS", "3"))
 # Story-together continuity: after each completed day a short recap is
 # generated and injected into every later section prompt, so chapters carry
 # established facts instead of relying on the prose tail alone.
@@ -327,6 +335,38 @@ Then write the prose. Requirements:
 - Structure the section as a compact chapter with 2-4 micro-beat-sized movements.
 - Do not add a new chapter heading or a Day heading inside the section.
 """
+
+    def build_section_continuation_prompt(
+        self,
+        *,
+        day_number: int,
+        section_index: int,
+        section_text: str,
+        word_target: int,
+        current_words: int,
+        section_outline: str,
+    ) -> str:
+        """Build the "keep going" prompt for an underlength section."""
+        remaining = max(word_target - current_words, 200)
+        return f"""Your Section {section_index} of Day {day_number} stopped too early.
+
+**SECTION OUTLINE:**
+{section_outline}
+
+**PROSE WRITTEN SO FAR:**
+{section_text.strip()}
+
+You have written {current_words:,} words; this section requires approximately
+{word_target:,} words. Continue the SAME section from exactly where it stops —
+do not restart, do not summarize, do not add new headings.
+
+Requirements:
+- Resume mid-scene from the final paragraph above and keep the same tone, tense, and POV.
+- Cover the remaining outline beats that have not happened yet.
+- Write approximately {remaining:,} more words of vivid, cinematic prose.
+- Every paragraph must introduce a new physical action, sensory change, decision, revelation, or consequence.
+- Do not end the section early; do not write "The End" or any closing marker.
+Output only the continuation prose."""
 
     def build_day_recap_prompt(self, title: str, day_number: int, day_text: str) -> str:
         """Build the continuity-digest prompt for a completed day."""
@@ -744,10 +784,52 @@ Do not retell the plot beat-by-beat. Do not comment on style or quality. Facts o
                         max_tokens=section_max_tokens or SECTION_MAX_TOKENS,
                     )
                     section_text = self._strip_embedded_day_headings(section_text)
+                    section_word_target = TARGET_WORDS_PER_DAY // max(len(section_blocks), 1)
+                    # Underlength enforcement: continue short sections until
+                    # they reach a sane fraction of target or attempts run out.
+                    min_words = int(section_word_target * SECTION_MIN_WORD_RATIO)
+                    current_words = len(section_text.split())
+                    for attempt in range(1, SECTION_CONTINUE_ATTEMPTS + 1):
+                        if current_words >= min_words:
+                            break
+                        _emit(
+                            "section",
+                            f"Day {day_number} section {section_index} short "
+                            f"({current_words:,}/{section_word_target:,} words) — continuing...",
+                        )
+                        LOGGER.info(
+                            "section continuation begin title=%s day=%s section=%s attempt=%s words=%s target=%s",
+                            title, day_number, section_index, attempt,
+                            current_words, section_word_target,
+                        )
+                        continuation = _stream_generate(
+                            stage=f"day-{day_number}-section-{section_index}-cont-{attempt}",
+                            message=f"Continuing Day {day_number} section {section_index} (attempt {attempt})...",
+                            model=model,
+                            prompt=self.build_section_continuation_prompt(
+                                day_number=day_number,
+                                section_index=section_index,
+                                section_text=section_text,
+                                word_target=section_word_target,
+                                current_words=current_words,
+                                section_outline=section_outline,
+                            ),
+                            system_prompt=system_prompt,
+                            temperature=temperature,
+                            max_tokens=section_max_tokens or SECTION_MAX_TOKENS,
+                        )
+                        addition = self._strip_embedded_day_headings(continuation).strip()
+                        if not addition:
+                            LOGGER.warning(
+                                "section continuation empty title=%s day=%s section=%s attempt=%s",
+                                title, day_number, section_index, attempt,
+                            )
+                            break
+                        section_text = f"{section_text.rstrip()}\n\n{addition}"
+                        current_words = len(section_text.split())
                     section_texts.append(section_text.strip())
                     prior_text = self._tail_for_context(section_text, max_chars=max(2500, _section_tail_chars()))
                     section_word_count = len(section_text.split())
-                    section_word_target = TARGET_WORDS_PER_DAY // max(len(section_blocks), 1)
                     LOGGER.info(
                         "section pass end title=%s day=%s section=%s elapsed=%.3fs output_words=%s word_ratio=%.2f",
                         title,

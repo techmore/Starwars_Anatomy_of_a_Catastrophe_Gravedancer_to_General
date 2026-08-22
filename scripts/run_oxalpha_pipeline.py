@@ -68,6 +68,10 @@ class OxAlphaBackend:
         if marker:
             section, day = int(marker.group(1)), int(marker.group(2))
             return self.response_dir / f"day{day}-s{section}.md"
+        marker = re.search(r"Your Section (\d+) of Day (\d+) stopped too early", prompt)
+        if marker:
+            section, day = int(marker.group(1)), int(marker.group(2))
+            return self.response_dir / f"day{day}-s{section}-cont.md"
         if "banner image prompt" in prompt:
             return self.response_dir / "banner.md"
         marker = re.search(r"\*\*CHAPTER:\*\* Day (\d+), Chapter (\d+)", prompt)
