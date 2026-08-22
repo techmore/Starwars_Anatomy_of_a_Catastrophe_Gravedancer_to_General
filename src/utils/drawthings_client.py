@@ -18,11 +18,12 @@ Design notes:
 """
 
 import base64
+import os
 import time
 from typing import Any
 
 # Ports Draw Things is known to use. Sidebar probes these in order.
-DEFAULT_DT_PORTS: tuple[int, ...] = (7859, 7860, 7001)
+DEFAULT_DT_PORTS: tuple[int, ...] = (7860, 7859, 7001)
 
 
 def _requests():
@@ -230,6 +231,20 @@ class DrawThingsClient:
             return {"fallback": True, "info": f"Video generation call failed: {e}", "raw": {}}
 
 
-def get_drawthings_client(base_url: str = f"http://localhost:{DEFAULT_DT_PORTS[0]}") -> DrawThingsClient:
-    """Create a Draw Things client for the requested base URL."""
-    return DrawThingsClient(base_url)
+def get_drawthings_client(base_url: str | None = None) -> DrawThingsClient:
+    """Create a Draw Things client, auto-detecting the active port if needed."""
+    if base_url:
+        return DrawThingsClient(base_url)
+    env_url = os.environ.get("GRAVEDANCER_DT_URL", "").strip()
+    if env_url:
+        return DrawThingsClient(env_url)
+    for port in DEFAULT_DT_PORTS:
+        candidate = f"http://localhost:{port}"
+        try:
+            client = DrawThingsClient(candidate)
+            if client.check_connection():
+                return client
+        except Exception:
+            continue
+    # Fall back to the first known port; calls will surface the error.
+    return DrawThingsClient(f"http://localhost:{DEFAULT_DT_PORTS[0]}")

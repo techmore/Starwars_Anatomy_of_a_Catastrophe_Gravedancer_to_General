@@ -50,6 +50,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   }}
   @media (prefers-color-scheme: dark) {{ h2.day {{border-color: #3a3320;}} }}
   h3.chapter {{ font-size: 1.13rem; margin-top: 2.1rem; }}
+  figure.plate {{ margin: 2rem 0; text-align: center; }}
+  figure.plate img {{ max-width: 100%; height: auto; border-radius: 4px;
+    box-shadow: 0 2px 14px rgba(0,0,0,.25); }}
   p {{ margin: 0 0 1.15em; text-align: justify; hyphens: auto; }}
   footer {{ margin-top: 4rem; font-size: .82rem; text-align: center; color: inherit; opacity: .65; }}
   @media print {{
@@ -218,18 +221,46 @@ def _wrap_paragraphs(md_text: str, width: int) -> list[str]:
 
 # ── HTML ────────────────────────────────────────────────────────────────────
 
-def to_html(title: str, story_md: str, metadata: dict[str, Any] | None = None) -> str:
+def to_html(title: str, story_md: str, metadata: dict[str, Any] | None = None,
+            images: dict[str, bytes] | None = None) -> str:
+    """Render the episode as standalone HTML.
+
+    ``images`` maps image keys ("banner", "day-1", "day-1-ch2", ...) to PNG
+    bytes; matching images are embedded inline (base64) at their positions.
+    """
     meta = metadata or {}
+    images = images or {}
     sections = parse_story_sections(story_md)
+
+    def _img_tag(key: str) -> str:
+        data = images.get(key)
+        if not data:
+            return ""
+        import base64
+        b64 = base64.b64encode(data).decode("ascii")
+        return (
+            f'<figure class="plate"><img src="data:image/png;base64,{b64}" '
+            f'alt="{html.escape(key)}"></figure>'
+        )
+
     body_parts: list[str] = []
+    cover = _img_tag("banner")
+    if cover:
+        body_parts.append(cover)
     for sec in sections:
         body_parts.append(f'<h2 class="day" id="day-{sec.number}">{html.escape(sec.heading)}</h2>')
+        plate = _img_tag(f"day-{sec.number}")
+        if plate:
+            body_parts.append(plate)
         if sec.intro:
             body_parts.append(_md_to_html_paragraphs(sec.intro))
         for ch in sec.chapters:
             body_parts.append(
                 f'<h3 class="chapter">Chapter {ch["number"]}: {html.escape(ch["title"])}</h3>'
             )
+            ch_plate = _img_tag(f"day-{sec.number}-ch{ch['number']}")
+            if ch_plate:
+                body_parts.append(ch_plate)
             body_parts.append(_md_to_html_paragraphs(ch["text"]))
     return HTML_TEMPLATE.format(
         title=html.escape(title),
@@ -255,11 +286,17 @@ def _md_to_html_paragraphs(md_text: str) -> str:
 
 def to_epub_bytes(title: str, story_md: str, metadata: dict[str, Any] | None = None,
                   cover_image: bytes | None = None,
-                  cover_media_type: str = "image/png") -> bytes:
-    """Build an EPUB 3 ebook: title page + one chapter per day."""
+                  cover_media_type: str = "image/png",
+                  images: dict[str, bytes] | None = None) -> bytes:
+    """Build an EPUB 3 ebook: title page + one chapter per day.
+
+    ``images`` maps keys ("banner", "day-1", "day-1-ch2", ...) to PNG bytes;
+    matching images are embedded at their chapter positions.
+    """
     from ebooklib import epub
 
     meta = metadata or {}
+    images = images or {}
     book = epub.EpubBook()
     identifier = f"gravedancer:{_slug(title)}"
     book.set_identifier(identifier)
@@ -274,6 +311,8 @@ def to_epub_bytes(title: str, story_md: str, metadata: dict[str, Any] | None = N
     h2 { margin-top: 2em; border-bottom: 1px solid #999; padding-bottom: .2em; }
     .meta { text-align: center; font-style: italic; }
     p { text-indent: 1.2em; margin: 0 0 .6em; }
+    figure.plate { margin: 1.5em 0; text-align: center; page-break-inside: avoid; }
+    figure.plate img { max-width: 100%; height: auto; }
     """
     css = epub.EpubItem(uid="style", file_name="style/main.css",
                          media_type="text/css", content=style.encode("utf-8"))
@@ -297,6 +336,27 @@ def to_epub_bytes(title: str, story_md: str, metadata: dict[str, Any] | None = N
 
     spine = ["nav", title_page]
     toc = [title_page]
+
+    def _embed_image(key: str, idx: int) -> tuple[str, Any | None]:
+        """Add an image to the book and return (xhtml img tag, item)."""
+        data = images.get(key)
+        if not data:
+            return "", None
+        item = epub.EpubItem(
+            uid=f"img{idx}", file_name=f"images/{key}.png",
+            media_type="image/png", content=data)
+        book.add_item(item)
+        tag = (f'<figure class="plate"><img src="images/{key}.png" '
+               f'alt="{html.escape(key)}"/></figure>')
+        return tag, item
+
+    img_idx = 0
+    banner_tag, _ = _embed_image("banner", img_idx)
+    img_idx += 1
+    if banner_tag:
+        title_content.append(banner_tag)
+    title_page.content = "".join(title_content)
+
     for sec in sections:
         chapter = epub.EpubHtml(
             title=sec.heading,
@@ -304,12 +364,20 @@ def to_epub_bytes(title: str, story_md: str, metadata: dict[str, Any] | None = N
             lang="en",
         )
         parts = [f"<h2>{html.escape(sec.heading)}</h2>"]
+        day_tag, _ = _embed_image(f"day-{sec.number}", img_idx)
+        img_idx += 1
+        if day_tag:
+            parts.append(day_tag)
         if sec.intro:
             parts.append(_md_to_html_paragraphs(sec.intro))
         for ch in sec.chapters:
             parts.append(
                 f"<h3>Chapter {ch['number']}: {html.escape(ch['title'])}</h3>"
             )
+            ch_tag, _ = _embed_image(f"day-{sec.number}-ch{ch['number']}", img_idx)
+            img_idx += 1
+            if ch_tag:
+                parts.append(ch_tag)
             parts.append(_md_to_html_paragraphs(ch["text"]))
         chapter.content = "".join(parts)
         chapter.add_item(css)

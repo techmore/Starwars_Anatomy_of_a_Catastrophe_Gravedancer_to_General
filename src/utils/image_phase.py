@@ -83,8 +83,10 @@ def generate_episode_images(
     mode: str = MODE_DAY,
     max_images: int | None = None,
     aspect_ratio: str = "16:9",
-    steps: int = 25,
+    steps: int = 4,
     cfg: float = 2.5,
+    width: int = 1024,
+    height: int = 576,
     progress=None,
 ) -> list[dict[str, Any]]:
     """Generate and save episode images. Returns a manifest of results.
@@ -105,7 +107,7 @@ def generate_episode_images(
         LOGGER.info("image gen begin label=%s budget_left=%s", label, budget)
         try:
             png = dt_client.generate_image(
-                prompt=prompt, width=1344, height=768, steps=steps, cfg=cfg)
+                prompt=prompt, width=width, height=height, steps=steps, cfg=cfg)
             rel = storage.save_image(episode_id, day=day, shot=shot, image_bytes=png)
             budget -= 1
             entry = {"label": label, "path": rel, "prompt_chars": len(prompt)}
