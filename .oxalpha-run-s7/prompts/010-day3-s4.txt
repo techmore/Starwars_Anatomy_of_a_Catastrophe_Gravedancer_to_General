@@ -1,0 +1,54 @@
+Expand Section 4 of Day 3 into prose.
+
+**EPISODE TITLE:** Hollow Bridge
+**TOTAL DAYS:** 6
+**SETTING / PLANET:** Tundra world with the frozen remains of a Clone Wars battle. Acid rain that sizzles on exposed metal. The primary action takes place at the control room of a crashed Separatist dreadnought.
+**JEDI TARGET:** {
+  "name": "Kaelen Kivan",
+  "species": "Kalleran",
+  "rank": "Jedi Consular",
+  "lightsaber_color": "Cyan",
+  "personality": "cold logician who calculates battle outcomes before they begin",
+  "why_targeted": "discovered the location of Ronderu lij Kummar's remains"
+}
+
+**TONE / FOCUS:** Transformation focus, Psychological horror
+**ADDITIONAL INSTRUCTIONS:**
+Story Arc: The Riddle of the Sith
+Conflict: A Sith artifact or Force anomaly in the setting complicates the hunt
+Resolution: the artifact corrupts the Jedi, and Qymaen must kill a fallen opponent
+Transformation: sees the Force as a tool of corruption, not just enlightenment
+This episode was created by structured randomization; expand the seeds into coherent prose.
+
+**EPISODE ARC:**
+Qymaen jai Sheelal hunts the Kalleran Jedi Consular Kaelen Kivan across the frozen corpse-field of a Clone Wars naval battle on the tundra world Jagraia, where acid rain hisses on exposed metal and a crashed Separatist dreadnought lies half-swallowed by a glacier. Kivan has come seeking the resting place of Ronderu lij Kummar, Qymaen's dead kin — but buried with her in the wreck is a Sith relic called the Hollow Bridge, a thing that speaks in the voices of the dead and trades sight for self. Day by day the cold logician calculates his way into corruption, trading pieces of himself for knowledge, while Qymaen — haunted by the same voice wearing his sister-in-arms' face — learns that the Force he is hunting is also hunting him. The arc ends on the hollow bridge of ice over the reactor chasm, where the artifact completes its work and Qymaen is forced to kill a fallen opponent, walking away certain of only one thing: that power, Jedi or Sith, is a tool of corruption before it is ever a light.
+
+**SECTION 4 OUTLINE:**
+- Chapter 4: The Herd
+  - Beat 1: Kivan's route has released the hangar droids and thawed the ship's automated logs; the whole wreck now converges its attention on Qymaen as prey.
+  - Beat 2: Wounded and low on ammunition, Qymaen turns the hunt inside out, baiting a droid wave into a coolant rupture and riding the steam-geyser up a service shaft.
+  - Beat 3: He surfaces in the command tower's observation blister directly above Kivan's position and finally has the shot he has chased for three days.
+  - Beat 4: Through the scope he watches Kivan kneel among the frozen bridge crew, relic in his lap, answering their silent question — "Did we do right?" — with "Yes," and does not fire.
+
+**PRIOR PROSE:**
+But the ledger behind his eyes held entries now that did not balance. A woman who had held a door for twenty years deserved relief or relief refused to her face, not abandonment by default. A captain deserved delivery. And somewhere under the new sea a counterfeit wore his beloved's love and sang her song wrong on purpose, waiting, patient as arithmetic, for the next bearer — and the next hunter — and Qymaen knew, kneeling in the frost of a remade world, packing the captain's chair-straps and the evidence and seven rounds, that he had already decided. There was a shore on another world with a cairn waiting to be finished. There was a door under this sea that opened for kin-grief. And there was, between those two graves, one hunter with a ledger, walking.
+
+He buried Sovala Ren at dusk, properly, on the highest ground, facing the sea she had commanded, and spoke her name and her ship's name and logged both in the ledger behind his eyes, and slept that night without dreams for the second time, and rose before the stars faded, and began the long walk north to where the clan shuttle routes touched the ice — carrying ten thousand counts of murder toward the daylight of tribunals, and carrying, folded small against his heart where his mother's knot had ridden for twenty years, the knowledge that the fight he had come here to end had only just decided to begin.
+
+Write only the prose for this section. Begin with a Markdown chapter heading in
+this form, using a short descriptive title based on the approved outline:
+### Chapter 4: [Descriptive Title]
+Then write the prose. Requirements:
+- Continue the story seamlessly from the prior prose.
+- Honor every fact in STORY SO FAR (names, injuries, objects, promises, unresolved threads); never contradict earlier days.
+- Keep this section focused on the provided outline.
+- Do not invent a new major beat.
+- Do not repeat sentences, beats, or phrasing from the prior prose unless the repetition is intentionally dramatic and introduces new information.
+- Never repeat an entire paragraph, sentence, dialogue exchange, or action sequence within this section. If a beat is complete, advance to the next beat or stop; do not fill the token budget.
+- Every paragraph must introduce a new physical action, sensory change, decision, revelation, or consequence. Do not use stock loops such as "He paused", "The Jedi's shield held", or repeated statements of the same intention.
+- Treat the four beats as a one-way cause-and-effect sequence. The section must not return to an earlier beat or reset the same confrontation.
+- Write vivid, cinematic prose with thriller pacing.
+- Preserve names, injuries, object locations, and emotional state.
+- Write approximately 6,923 words for this section.
+- Structure the section as a compact chapter with 2-4 micro-beat-sized movements.
+- Do not add a new chapter heading or a Day heading inside the section.

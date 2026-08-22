@@ -1,0 +1,62 @@
+Expand Section 3 of Day 3 into prose.
+
+**EPISODE TITLE:** Hollow Bridge
+**TOTAL DAYS:** 6
+**SETTING / PLANET:** Tundra world with the frozen remains of a Clone Wars battle. Acid rain that sizzles on exposed metal. The primary action takes place at the control room of a crashed Separatist dreadnought.
+**JEDI TARGET:** {
+  "name": "Kaelen Kivan",
+  "species": "Kalleran",
+  "rank": "Jedi Consular",
+  "lightsaber_color": "Cyan",
+  "personality": "cold logician who calculates battle outcomes before they begin",
+  "why_targeted": "discovered the location of Ronderu lij Kummar's remains"
+}
+
+**TONE / FOCUS:** Transformation focus, Psychological horror
+**ADDITIONAL INSTRUCTIONS:**
+Story Arc: The Riddle of the Sith
+Conflict: A Sith artifact or Force anomaly in the setting complicates the hunt
+Resolution: the artifact corrupts the Jedi, and Qymaen must kill a fallen opponent
+Transformation: sees the Force as a tool of corruption, not just enlightenment
+This episode was created by structured randomization; expand the seeds into coherent prose.
+
+**EPISODE ARC:**
+Qymaen jai Sheelal hunts the Kalleran Jedi Consular Kaelen Kivan across the frozen corpse-field of a Clone Wars naval battle on the tundra world Jagraia, where acid rain hisses on exposed metal and a crashed Separatist dreadnought lies half-swallowed by a glacier. Kivan has come seeking the resting place of Ronderu lij Kummar, Qymaen's dead kin — but buried with her in the wreck is a Sith relic called the Hollow Bridge, a thing that speaks in the voices of the dead and trades sight for self. Day by day the cold logician calculates his way into corruption, trading pieces of himself for knowledge, while Qymaen — haunted by the same voice wearing his sister-in-arms' face — learns that the Force he is hunting is also hunting him. The arc ends on the hollow bridge of ice over the reactor chasm, where the artifact completes its work and Qymaen is forced to kill a fallen opponent, walking away certain of only one thing: that power, Jedi or Sith, is a tool of corruption before it is ever a light.
+
+**SECTION 3 OUTLINE:**
+- Chapter 3: Vision of the Shore
+  - Beat 1: Cornered at last in a collapsed galley, Qymaen is shown a vision — perfect in every detail of salt and wind — of Ronderu alive, waiting for him, reproachful that he has come with a rifle.
+  - Beat 2: The vision-Ronderu tells him the Jedi is carrying his sister home and that Qymaen has spent twenty years shooting at shadows instead of burying his dead.
+  - Beat 3: He shatters the vision by driving his knife through his own palm and naming what it is: a lie with her face, a lure wearing the honored dead.
+  - Beat 4: The vision tears like cloth, and behind it, for one heartbeat, he sees the truth of the thing speaking: something vast, patient, and starving, wearing the relic like a mask.
+
+**PRIOR PROSE:**
+*RUN.*
+
+He ran. Through the vault antechamber, past the warm black door hanging open on its empty lockbox room, up the processional corridor with its spiral bands glowing blue-white, into galleries full of drifting frost-snow falling upward, following arrows and spirals and the tightening screw of the turning sky, and burst at last, lungs bleeding air, into the airlock terrace and the open night — and stopped so abruptly he nearly dropped the captain.
+
+The glacier was moving. Not sliding — *rising*, along a line two kilometers long directly above the dreadnought's spine, the ice doming upward in a slow colossal breath as the pulse's heat came up from beneath, and through the cracks spreading across its face shone the reactor's blue-white glow, and against that glow, silhouetted at the summit of the dome, small and motionless, stood a grey figure with arms raised, holding something aloft that sang loud enough now to hear across open ice.
+
+Kaelen Kivan stood on top of a breaking mountain, holding the Hollow Bridge up to the aurora like an offering or a lure, and turned his head, unhurried as ever, and looked down the slope at the hunter struggling out of the wreck's mouth with a captain on his shoulder and justice in his pack, and called down across the groaning ice, in a voice pitched precisely for the distance:
+
+"You took the logs. Good. That changes the terms — mine, not its. Get clear of the geometry, hunter! What happens next is my calculation, and it requires an audience of exactly zero!"
+
+And the dome beneath his feet cracked from rim to rim.
+
+Write only the prose for this section. Begin with a Markdown chapter heading in
+this form, using a short descriptive title based on the approved outline:
+### Chapter 3: [Descriptive Title]
+Then write the prose. Requirements:
+- Continue the story seamlessly from the prior prose.
+- Honor every fact in STORY SO FAR (names, injuries, objects, promises, unresolved threads); never contradict earlier days.
+- Keep this section focused on the provided outline.
+- Do not invent a new major beat.
+- Do not repeat sentences, beats, or phrasing from the prior prose unless the repetition is intentionally dramatic and introduces new information.
+- Never repeat an entire paragraph, sentence, dialogue exchange, or action sequence within this section. If a beat is complete, advance to the next beat or stop; do not fill the token budget.
+- Every paragraph must introduce a new physical action, sensory change, decision, revelation, or consequence. Do not use stock loops such as "He paused", "The Jedi's shield held", or repeated statements of the same intention.
+- Treat the four beats as a one-way cause-and-effect sequence. The section must not return to an earlier beat or reset the same confrontation.
+- Write vivid, cinematic prose with thriller pacing.
+- Preserve names, injuries, object locations, and emotional state.
+- Write approximately 6,923 words for this section.
+- Structure the section as a compact chapter with 2-4 micro-beat-sized movements.
+- Do not add a new chapter heading or a Day heading inside the section.

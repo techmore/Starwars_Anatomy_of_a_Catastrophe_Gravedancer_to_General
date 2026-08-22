@@ -1,0 +1,56 @@
+Expand Section 1 of Day 2 into prose.
+
+**EPISODE TITLE:** Hollow Bridge
+**TOTAL DAYS:** 6
+**SETTING / PLANET:** Tundra world with the frozen remains of a Clone Wars battle. Acid rain that sizzles on exposed metal. The primary action takes place at the control room of a crashed Separatist dreadnought.
+**JEDI TARGET:** {
+  "name": "Kaelen Kivan",
+  "species": "Kalleran",
+  "rank": "Jedi Consular",
+  "lightsaber_color": "Cyan",
+  "personality": "cold logician who calculates battle outcomes before they begin",
+  "why_targeted": "discovered the location of Ronderu lij Kummar's remains"
+}
+
+**TONE / FOCUS:** Transformation focus, Psychological horror
+**ADDITIONAL INSTRUCTIONS:**
+Story Arc: The Riddle of the Sith
+Conflict: A Sith artifact or Force anomaly in the setting complicates the hunt
+Resolution: the artifact corrupts the Jedi, and Qymaen must kill a fallen opponent
+Transformation: sees the Force as a tool of corruption, not just enlightenment
+This episode was created by structured randomization; expand the seeds into coherent prose.
+
+**EPISODE ARC:**
+Qymaen jai Sheelal hunts the Kalleran Jedi Consular Kaelen Kivan across the frozen corpse-field of a Clone Wars naval battle on the tundra world Jagraia, where acid rain hisses on exposed metal and a crashed Separatist dreadnought lies half-swallowed by a glacier. Kivan has come seeking the resting place of Ronderu lij Kummar, Qymaen's dead kin — but buried with her in the wreck is a Sith relic called the Hollow Bridge, a thing that speaks in the voices of the dead and trades sight for self. Day by day the cold logician calculates his way into corruption, trading pieces of himself for knowledge, while Qymaen — haunted by the same voice wearing his sister-in-arms' face — learns that the Force he is hunting is also hunting him. The arc ends on the hollow bridge of ice over the reactor chasm, where the artifact completes its work and Qymaen is forced to kill a fallen opponent, walking away certain of only one thing: that power, Jedi or Sith, is a tool of corruption before it is ever a light.
+
+**SECTION 1 OUTLINE:**
+- Chapter 1: Frozen Watch
+  - Beat 1: Qymaen descends through crew decks where battle-stations crews stand frozen mid-task, preserved by the cold, and forces himself to walk the centerline without looking at their eyes.
+  - Beat 2: He reads the damage pattern and reconstructs the death of the ship: not boarded, not beaten — its own reactor was ordered to breach by someone aboard.
+  - Beat 3: In the officers' wardroom he finds a table still set for a meal and a single chair turned to face the bulkhead, where someone sat listening to the wall.
+  - Beat 4: Carved into that bulkhead, in Basic with a Kalleran accent's spelling habits, is a line of script: THE BRIDGE IS HOLLOW, WALK IT CAREFULLY.
+
+**PRIOR PROSE:**
+"It doesn't want to keep me out," he said to the warm dark. "It wants me to knock."
+
+And the humming stopped. The whole ship stopped with it — the breathing, the tick, the vast contented rhythm, everything, all at once, the way a forest goes silent when the hunter crosses the scent-line — and in the ringing absolute quiet, at the height of a kneeling man's heart, in fresh bright metal, a new mark appeared on the black door's face between two turns of the carved spiral. One stroke. Then a second, slower. A tally beginning, counting something new, counting *up* this time, and Qymaen knelt there watching the third stroke cut itself out of nothing in front of his eyes and understood, with the flat clarity that comes after the last denial is spent, exactly what the marks had counted all along. Not days. Not passengers.
+
+Doors. Every stroke was a door he had walked through since the sky. The crash trench. The acid-rain line. The airlock. The wardroom. The alcove. The junction. The torn weld. And now this one, opening stroke by patient stroke, and on the far side of it, whatever the whole lens-shaped weight of a drowned warship had spent twenty years focusing itself upon, gathering its dead faces and its kept corridors and its borrowed voice toward this single point of arrival, hummed her tune, and waited, warmly, to be knocked.
+
+Write only the prose for this section. Begin with a Markdown chapter heading in
+this form, using a short descriptive title based on the approved outline:
+### Chapter 1: [Descriptive Title]
+Then write the prose. Requirements:
+- Continue the story seamlessly from the prior prose.
+- Honor every fact in STORY SO FAR (names, injuries, objects, promises, unresolved threads); never contradict earlier days.
+- Keep this section focused on the provided outline.
+- Do not invent a new major beat.
+- Do not repeat sentences, beats, or phrasing from the prior prose unless the repetition is intentionally dramatic and introduces new information.
+- Never repeat an entire paragraph, sentence, dialogue exchange, or action sequence within this section. If a beat is complete, advance to the next beat or stop; do not fill the token budget.
+- Every paragraph must introduce a new physical action, sensory change, decision, revelation, or consequence. Do not use stock loops such as "He paused", "The Jedi's shield held", or repeated statements of the same intention.
+- Treat the four beats as a one-way cause-and-effect sequence. The section must not return to an earlier beat or reset the same confrontation.
+- Write vivid, cinematic prose with thriller pacing.
+- Preserve names, injuries, object locations, and emotional state.
+- Write approximately 6,923 words for this section.
+- Structure the section as a compact chapter with 2-4 micro-beat-sized movements.
+- Do not add a new chapter heading or a Day heading inside the section.

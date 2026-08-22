@@ -1,0 +1,56 @@
+Expand Section 1 of Day 4 into prose.
+
+**EPISODE TITLE:** Hollow Bridge
+**TOTAL DAYS:** 6
+**SETTING / PLANET:** Tundra world with the frozen remains of a Clone Wars battle. Acid rain that sizzles on exposed metal. The primary action takes place at the control room of a crashed Separatist dreadnought.
+**JEDI TARGET:** {
+  "name": "Kaelen Kivan",
+  "species": "Kalleran",
+  "rank": "Jedi Consular",
+  "lightsaber_color": "Cyan",
+  "personality": "cold logician who calculates battle outcomes before they begin",
+  "why_targeted": "discovered the location of Ronderu lij Kummar's remains"
+}
+
+**TONE / FOCUS:** Transformation focus, Psychological horror
+**ADDITIONAL INSTRUCTIONS:**
+Story Arc: The Riddle of the Sith
+Conflict: A Sith artifact or Force anomaly in the setting complicates the hunt
+Resolution: the artifact corrupts the Jedi, and Qymaen must kill a fallen opponent
+Transformation: sees the Force as a tool of corruption, not just enlightenment
+This episode was created by structured randomization; expand the seeds into coherent prose.
+
+**EPISODE ARC:**
+Qymaen jai Sheelal hunts the Kalleran Jedi Consular Kaelen Kivan across the frozen corpse-field of a Clone Wars naval battle on the tundra world Jagraia, where acid rain hisses on exposed metal and a crashed Separatist dreadnought lies half-swallowed by a glacier. Kivan has come seeking the resting place of Ronderu lij Kummar, Qymaen's dead kin — but buried with her in the wreck is a Sith relic called the Hollow Bridge, a thing that speaks in the voices of the dead and trades sight for self. Day by day the cold logician calculates his way into corruption, trading pieces of himself for knowledge, while Qymaen — haunted by the same voice wearing his sister-in-arms' face — learns that the Force he is hunting is also hunting him. The arc ends on the hollow bridge of ice over the reactor chasm, where the artifact completes its work and Qymaen is forced to kill a fallen opponent, walking away certain of only one thing: that power, Jedi or Sith, is a tool of corruption before it is ever a light.
+
+**SECTION 1 OUTLINE:**
+- Chapter 1: Table Set for Three
+  - Beat 1: Kivan leads them down through lower decks where the cold preserves even sound; footsteps ring minutes after they are made, and conversations echo with wrong delays.
+  - Beat 2: In the enlisted mess, the tables have been re-set since yesterday — places laid for two, then, as they watch, a third place assembles itself piece by piece from the dark.
+  - Beat 3: Kivan eats from the third place's plate and thanks the empty chair for the meal; Qymaen marks that the Jedi's precise, economical hands now tremble between gestures.
+  - Beat 4: When Qymaen refuses food, the ship dims insultedly, and frost creeps across his half of the table in a slow spiral.
+
+**PRIOR PROSE:**
+The crew asked no questions. They built the shelter, thawed the captain's chair free, stood watch over the shard without being told not to touch it — Kaleesh discipline being what it is, and the look on their general's face supplying all doctrine required. And that night, while storms walked the horizon and the shard lay wrapped in three layers of wampa-hide at the shelter's center, Qymaen took out the journal — grey hide, strap-buckled, salvaged from a drowned camp and carried through tribunals and oceans against every rational calculus — and read by lamplight the fifteenth entry, uncrossed, unfinished, in Kaelen Kivan's disciplined script, and found that the entry ended mid-sentence, exactly where the water had closed over its author, and that the sentence's final words were: *the outcome where we both survive requires the general to become the kind of man who can hold both halves and stay —*
+
+The rest was blank page.
+
+Qymaen looked at that blankness for most of one watch. Then he took up his own knife, and beneath the Jedi's unfinished line, in the ledger-hand his mother had taught him, he wrote the continuation himself: *— himself. Understood. In progress.* And he closed the journal, and banked the fire, and slept in shifts, and dreamed of nothing, and outside the shelter, under the ice, at long intervals, at the edge of hearing, something sang to the drowning dark a tune with the middle wrong — patient, unresentful, waiting — and the shard at the shelter's heart lay warm against its wrapping, and did not answer.
+
+Write only the prose for this section. Begin with a Markdown chapter heading in
+this form, using a short descriptive title based on the approved outline:
+### Chapter 1: [Descriptive Title]
+Then write the prose. Requirements:
+- Continue the story seamlessly from the prior prose.
+- Honor every fact in STORY SO FAR (names, injuries, objects, promises, unresolved threads); never contradict earlier days.
+- Keep this section focused on the provided outline.
+- Do not invent a new major beat.
+- Do not repeat sentences, beats, or phrasing from the prior prose unless the repetition is intentionally dramatic and introduces new information.
+- Never repeat an entire paragraph, sentence, dialogue exchange, or action sequence within this section. If a beat is complete, advance to the next beat or stop; do not fill the token budget.
+- Every paragraph must introduce a new physical action, sensory change, decision, revelation, or consequence. Do not use stock loops such as "He paused", "The Jedi's shield held", or repeated statements of the same intention.
+- Treat the four beats as a one-way cause-and-effect sequence. The section must not return to an earlier beat or reset the same confrontation.
+- Write vivid, cinematic prose with thriller pacing.
+- Preserve names, injuries, object locations, and emotional state.
+- Write approximately 6,923 words for this section.
+- Structure the section as a compact chapter with 2-4 micro-beat-sized movements.
+- Do not add a new chapter heading or a Day heading inside the section.

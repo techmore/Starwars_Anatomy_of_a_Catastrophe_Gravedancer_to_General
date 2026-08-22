@@ -1,0 +1,60 @@
+Expand Section 5 of Day 2 into prose.
+
+**EPISODE TITLE:** Hollow Bridge
+**TOTAL DAYS:** 6
+**SETTING / PLANET:** Tundra world with the frozen remains of a Clone Wars battle. Acid rain that sizzles on exposed metal. The primary action takes place at the control room of a crashed Separatist dreadnought.
+**JEDI TARGET:** {
+  "name": "Kaelen Kivan",
+  "species": "Kalleran",
+  "rank": "Jedi Consular",
+  "lightsaber_color": "Cyan",
+  "personality": "cold logician who calculates battle outcomes before they begin",
+  "why_targeted": "discovered the location of Ronderu lij Kummar's remains"
+}
+
+**TONE / FOCUS:** Transformation focus, Psychological horror
+**ADDITIONAL INSTRUCTIONS:**
+Story Arc: The Riddle of the Sith
+Conflict: A Sith artifact or Force anomaly in the setting complicates the hunt
+Resolution: the artifact corrupts the Jedi, and Qymaen must kill a fallen opponent
+Transformation: sees the Force as a tool of corruption, not just enlightenment
+This episode was created by structured randomization; expand the seeds into coherent prose.
+
+**EPISODE ARC:**
+Qymaen jai Sheelal hunts the Kalleran Jedi Consular Kaelen Kivan across the frozen corpse-field of a Clone Wars naval battle on the tundra world Jagraia, where acid rain hisses on exposed metal and a crashed Separatist dreadnought lies half-swallowed by a glacier. Kivan has come seeking the resting place of Ronderu lij Kummar, Qymaen's dead kin — but buried with her in the wreck is a Sith relic called the Hollow Bridge, a thing that speaks in the voices of the dead and trades sight for self. Day by day the cold logician calculates his way into corruption, trading pieces of himself for knowledge, while Qymaen — haunted by the same voice wearing his sister-in-arms' face — learns that the Force he is hunting is also hunting him. The arc ends on the hollow bridge of ice over the reactor chasm, where the artifact completes its work and Qymaen is forced to kill a fallen opponent, walking away certain of only one thing: that power, Jedi or Sith, is a tool of corruption before it is ever a light.
+
+**SECTION 5 OUTLINE:**
+- Chapter 5: The Relic Room
+  - Beat 1: Following the journal's route, Qymaen reaches a shielded vault beneath the command tower where the ship's final order was to entomb one cargo above all others.
+  - Beat 2: Inside, on a plinth of fused bone-metal, rests the Hollow Bridge: a curved shard of black crystal in a frame of severed hand-rails, singing quietly in many dead voices.
+  - Beat 3: Kivan is already there, standing before it, and for the first time looks tired; he tells Qymaen he has calculated every outcome of this room and none of them spare either of them.
+  - Beat 4: As Qymaen raises the rifle, Kivan lifts the relic — and the ship's frozen dead all through the hull turn their heads toward the vault at once.
+
+**PRIOR PROSE:**
+"Left-handed," Qymaen said. His voice sounded far away to himself. "Ronderu worked left-handed. Everyone said the swords made her ambidextrous. They were wrong. She was born to the left hand and taught herself the right."
+
+Kivan looked at the mark for a long moment, and then at the bracer on Qymaen's forearm, where the fine feminine tally counted its quiet count, and something passed over the Jedi's face that Qymaen had not seen there before and could not name until later, walking the ice in the dark: it was professional dread, the look of an accountant finding a transaction in the ledger that he himself did not enter.
+
+"The relic does not have hands," Kivan said slowly. "Bearers are its hands. Fourteen bearers, fourteen sets of hands, and every one of them recorded in my journal in that second script — cramped, slanted, circling." His eyes came up. "Hunter. Whose handwriting is on your bracer?"
+
+Qymaen did not answer. He had taken the bracer off and was looking at the underside of the strap, at marks he had never turned over to read, and the marks were words, tiny, fresh-cut in the leather, in Basic, in a woman's hand, and they said:
+
+*Not hers. Ask me who.*
+
+Write only the prose for this section. Begin with a Markdown chapter heading in
+this form, using a short descriptive title based on the approved outline:
+### Chapter 5: [Descriptive Title]
+Then write the prose. Requirements:
+- Continue the story seamlessly from the prior prose.
+- Honor every fact in STORY SO FAR (names, injuries, objects, promises, unresolved threads); never contradict earlier days.
+- Keep this section focused on the provided outline.
+- Do not invent a new major beat.
+- Do not repeat sentences, beats, or phrasing from the prior prose unless the repetition is intentionally dramatic and introduces new information.
+- Never repeat an entire paragraph, sentence, dialogue exchange, or action sequence within this section. If a beat is complete, advance to the next beat or stop; do not fill the token budget.
+- Every paragraph must introduce a new physical action, sensory change, decision, revelation, or consequence. Do not use stock loops such as "He paused", "The Jedi's shield held", or repeated statements of the same intention.
+- Treat the four beats as a one-way cause-and-effect sequence. The section must not return to an earlier beat or reset the same confrontation.
+- Write vivid, cinematic prose with thriller pacing.
+- Preserve names, injuries, object locations, and emotional state.
+- Write approximately 6,923 words for this section.
+- Structure the section as a compact chapter with 2-4 micro-beat-sized movements.
+- Do not add a new chapter heading or a Day heading inside the section.

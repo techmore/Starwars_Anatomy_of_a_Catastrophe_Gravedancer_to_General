@@ -1,0 +1,54 @@
+Expand Section 2 of Day 2 into prose.
+
+**EPISODE TITLE:** Hollow Bridge
+**TOTAL DAYS:** 6
+**SETTING / PLANET:** Tundra world with the frozen remains of a Clone Wars battle. Acid rain that sizzles on exposed metal. The primary action takes place at the control room of a crashed Separatist dreadnought.
+**JEDI TARGET:** {
+  "name": "Kaelen Kivan",
+  "species": "Kalleran",
+  "rank": "Jedi Consular",
+  "lightsaber_color": "Cyan",
+  "personality": "cold logician who calculates battle outcomes before they begin",
+  "why_targeted": "discovered the location of Ronderu lij Kummar's remains"
+}
+
+**TONE / FOCUS:** Transformation focus, Psychological horror
+**ADDITIONAL INSTRUCTIONS:**
+Story Arc: The Riddle of the Sith
+Conflict: A Sith artifact or Force anomaly in the setting complicates the hunt
+Resolution: the artifact corrupts the Jedi, and Qymaen must kill a fallen opponent
+Transformation: sees the Force as a tool of corruption, not just enlightenment
+This episode was created by structured randomization; expand the seeds into coherent prose.
+
+**EPISODE ARC:**
+Qymaen jai Sheelal hunts the Kalleran Jedi Consular Kaelen Kivan across the frozen corpse-field of a Clone Wars naval battle on the tundra world Jagraia, where acid rain hisses on exposed metal and a crashed Separatist dreadnought lies half-swallowed by a glacier. Kivan has come seeking the resting place of Ronderu lij Kummar, Qymaen's dead kin — but buried with her in the wreck is a Sith relic called the Hollow Bridge, a thing that speaks in the voices of the dead and trades sight for self. Day by day the cold logician calculates his way into corruption, trading pieces of himself for knowledge, while Qymaen — haunted by the same voice wearing his sister-in-arms' face — learns that the Force he is hunting is also hunting him. The arc ends on the hollow bridge of ice over the reactor chasm, where the artifact completes its work and Qymaen is forced to kill a fallen opponent, walking away certain of only one thing: that power, Jedi or Sith, is a tool of corruption before it is ever a light.
+
+**SECTION 2 OUTLINE:**
+- Chapter 2: The Killing Corridors
+  - Beat 1: Kivan has gone ahead through the security corridors, and his passing has awakened the wreck: old turret servos track movement, blast doors cycle on stored charge.
+  - Beat 2: Qymaen survives a kill-corridor by moving during the doors' cycling rhythm, counting the intervals like drumbeats, taking a gash from a servo-blade across his forearm.
+  - Beat 3: He realizes the defenses are not random — they herd intruders along one specific route, deeper, toward a destination chosen long before either hunter arrived.
+  - Beat 4: At a junction he finds a dead thing in scorched scavenger armor, killed days ago by a lightsaber, arranged seated and respectful, facing the same deep route.
+
+**PRIOR PROSE:**
+Kaelen Kivan walked through the hangar's mouth with his blade lit and his hands empty of everything else, and the battle bent around him like a stream around a stone. Droids engaged him and disintegrated — casually, almost gently, cyan light flicking out in economical strokes — but the formation itself did not press him, did not pen him, did not offer him a single obstacle the ship had spent on Qymaen. The machines curtained him. They made a moving wall of noise and light between the Jedi and every approach but his own, escorting him across the deck the way honor guards escort, and Kivan moved inside that curtain with the terrible unhurried economy Qymaen remembered from the shaft gallery, past racks of sleeping death as if strolling a library's stacks. And then the curtain opened, deliberately, a page turning, and the Jedi looked up across forty meters of battlefield directly into Qymaen's eyes, and deactivated his blade.
+
+"You should not have followed the voice," Kivan called, and his voice carried through the battle untouched, pitched with that librarian's precision. "It likes you. That is worse than dislike. Ask it sometime what happened to the ones it disliked." He raised one hand — not a threat, a gesture at the deck hatch behind him, an invitation shaped like a direction. "The fork is real, hunter. The right-hand road. You took it. Good." And he dropped through the hatch himself, unhurried, sheathing the saber as he fell, and every remaining droid in the hangar powered down at once, mid-flight, and crashed onto the deck around Qymaen like a grove of trees dying in fast motion, leaving him alive in the ringing sudden silence with nineteen rounds, a bleeding arm, and the absolute certainty that he had just been graded.
+
+Write only the prose for this section. Begin with a Markdown chapter heading in
+this form, using a short descriptive title based on the approved outline:
+### Chapter 2: [Descriptive Title]
+Then write the prose. Requirements:
+- Continue the story seamlessly from the prior prose.
+- Honor every fact in STORY SO FAR (names, injuries, objects, promises, unresolved threads); never contradict earlier days.
+- Keep this section focused on the provided outline.
+- Do not invent a new major beat.
+- Do not repeat sentences, beats, or phrasing from the prior prose unless the repetition is intentionally dramatic and introduces new information.
+- Never repeat an entire paragraph, sentence, dialogue exchange, or action sequence within this section. If a beat is complete, advance to the next beat or stop; do not fill the token budget.
+- Every paragraph must introduce a new physical action, sensory change, decision, revelation, or consequence. Do not use stock loops such as "He paused", "The Jedi's shield held", or repeated statements of the same intention.
+- Treat the four beats as a one-way cause-and-effect sequence. The section must not return to an earlier beat or reset the same confrontation.
+- Write vivid, cinematic prose with thriller pacing.
+- Preserve names, injuries, object locations, and emotional state.
+- Write approximately 6,923 words for this section.
+- Structure the section as a compact chapter with 2-4 micro-beat-sized movements.
+- Do not add a new chapter heading or a Day heading inside the section.

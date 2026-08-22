@@ -1,0 +1,72 @@
+Plan a 6-day episode for "Gravedancer to General: Anatomy of a Catastrophe".
+
+**EPISODE TITLE:** Hollow Bridge
+**SETTING / PLANET:** Tundra world with the frozen remains of a Clone Wars battle. Acid rain that sizzles on exposed metal. The primary action takes place at the control room of a crashed Separatist dreadnought.
+**JEDI TARGET:** {
+  "name": "Kaelen Kivan",
+  "species": "Kalleran",
+  "rank": "Jedi Consular",
+  "lightsaber_color": "Cyan",
+  "personality": "cold logician who calculates battle outcomes before they begin",
+  "why_targeted": "discovered the location of Ronderu lij Kummar's remains"
+}
+**TONE / FOCUS:** Transformation focus, Psychological horror
+**ADDITIONAL INSTRUCTIONS:**
+Story Arc: The Riddle of the Sith
+Conflict: A Sith artifact or Force anomaly in the setting complicates the hunt
+Resolution: the artifact corrupts the Jedi, and Qymaen must kill a fallen opponent
+Transformation: sees the Force as a tool of corruption, not just enlightenment
+This episode was created by structured randomization; expand the seeds into coherent prose.
+
+Return a structured outline with TWO sections:
+
+### 1. Episode Arc (first)
+## EPISODE ARC
+[Write 3-5 sentences describing the episode's overall shape: the thematic spine, the Jedi's philosophy, the arc Qymaen will travel, and how it ends. This sets context for every day below.]
+
+### 2. Day Outlines (after the arc)
+Each day must have this format:
+## DAY 1: [Short Title]
+- Purpose: [why this day matters in the episode arc]
+- Chapter 1:
+  - Beat 1: [one concise sentence]
+  - Beat 2: [one concise sentence]
+  - Beat 3: [one concise sentence]
+  - Beat 4: [one concise sentence]
+- Chapter 2:
+  - Beat 1: [one concise sentence]
+  - Beat 2: [one concise sentence]
+  - Beat 3: [one concise sentence]
+  - Beat 4: [one concise sentence]
+- Chapter 3:
+  - Beat 1: [one concise sentence]
+  - Beat 2: [one concise sentence]
+  - Beat 3: [one concise sentence]
+  - Beat 4: [one concise sentence]
+- Chapter 4: [same four-beat format]
+- Chapter 5: [same four-beat format]
+- Ending hook: [1-2 sentences — what pulls the reader into the next day]
+
+Rules:
+- The outline must include ALL requested days, in order, with no omissions.
+- Do not stop after Day 1 or Day 2. Continue until every day is present.
+- Each day must have exactly 5 chapters. Each chapter must have exactly 4 concise beats. Each beat should be specific enough that a later expansion pass can write prose from it without inventing new plot turns.
+- Make the beats explicit with "Beat 1", "Beat 2", etc. under every chapter.
+- Every day must include an ending hook, even if it is only one sentence.
+- Treat each day as a self-contained thriller chapter with its own escalation arc.
+- The final day must resolve the episode arc decisively.
+- Keep the overall episode arc coherent across all days.
+- Preserve continuity of locations, injuries, emotional state, and Jedi capabilities.
+- Use the beats to stage the day's internal rhythm: setup, pressure, escalation, reversal, hook.
+- Keep Day 1 setup strong and the final day decisive.
+- The final outcome is determined by the approved concept. A kill is optional;
+  allowed outcomes include death, escape, partial victory, continuing pursuit,
+  the Jedi turning the tables, or a transformation choice.
+- Do NOT include meta-commentary, notes, or thinking before the episode arc. Start directly with "## EPISODE ARC".
+
+**ADDITIONAL INSTRUCTIONS:**
+Story Arc: The Riddle of the Sith
+Conflict: A Sith artifact or Force anomaly in the setting complicates the hunt
+Resolution: the artifact corrupts the Jedi, and Qymaen must kill a fallen opponent
+Transformation: sees the Force as a tool of corruption, not just enlightenment
+This episode was created by structured randomization; expand the seeds into coherent prose.

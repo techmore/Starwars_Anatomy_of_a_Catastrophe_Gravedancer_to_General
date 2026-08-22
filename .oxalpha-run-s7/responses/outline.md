@@ -1,0 +1,176 @@
+## EPISODE ARC
+Qymaen jai Sheelal hunts the Kalleran Jedi Consular Kaelen Kivan across the frozen corpse-field of a Clone Wars naval battle on the tundra world Jagraia, where acid rain hisses on exposed metal and a crashed Separatist dreadnought lies half-swallowed by a glacier. Kivan has come seeking the resting place of Ronderu lij Kummar, Qymaen's dead kin — but buried with her in the wreck is a Sith relic called the Hollow Bridge, a thing that speaks in the voices of the dead and trades sight for self. Day by day the cold logician calculates his way into corruption, trading pieces of himself for knowledge, while Qymaen — haunted by the same voice wearing his sister-in-arms' face — learns that the Force he is hunting is also hunting him. The arc ends on the hollow bridge of ice over the reactor chasm, where the artifact completes its work and Qymaen is forced to kill a fallen opponent, walking away certain of only one thing: that power, Jedi or Sith, is a tool of corruption before it is ever a light.
+
+## DAY 1: White Silence
+- Purpose: Establish the hunt, the killing terrain, and both hunters' competence; plant the artifact's first whisper and the mystery of what Kivan wants.
+- Chapter 1: Shot Out of the Sky
+  - Beat 1: Qymaen's dropship is torn apart by orbital debris from the old battle field and crashes onto the tundra short of his landing zone.
+  - Beat 2: He digs himself and his rifle out of the wreck and takes inventory: few rounds, fewer rations, no comms, forty kilometers of ice between him and the dreadnought.
+  - Beat 3: Reading the crash trench, he realizes the debris was deflected — someone nudged the graveyard's dead metal to swat him from the sky.
+  - Beat 4: He finds a single set of boot prints already hours old, walking calmly toward the wreck, and begins the pursuit.
+- Chapter 2: The Acid Rain Line
+  - Beat 1: Acid rain sweeps the plain; Qymaen shelters inside the carcass of a frozen walker and observes a scavenger camp downwind being picked clean.
+  - Beat 2: Among the scavengers' leavings he finds a chart marked in careful Jedi script — depth soundings of the glacier around the dreadnought.
+  - Beat 3: The last living scavenger, dying of burns, tells him a tall man with a cyan blade passed through, asked about graves beneath the ice, and paid in answers.
+  - Beat 4: The scavenger dies mid-sentence when the wind changes; Qymaen notes that the Jedi left him alive and unhurt, and does not know what to do with that arithmetic.
+- Chapter 3: First Sighting
+  - Beat 1: At dusk Qymaen glasses the glacier's edge and sees Kivan crossing open ice in the open, unafraid, as if the battlefield were a library.
+  - Beat 2: He settles the shot, breathes out — and a shelf of ancient debris groans and collapses between them, precisely, impossibly, eating his line of fire.
+  - Beat 3: Kivan stops, turns, looks directly at Qymaen's hiding place across two kilometers of ice, inclines his head, and walks on.
+  - Beat 4: Shaken, Qymaen follows and discovers his own footprints from an hour earlier erased behind him, the snow smoothed as if by a patient hand.
+- Chapter 4: What Walks Below
+  - Beat 1: Night falls hard; Qymaen shelters in a melt-cave and hears, through the ice, a rhythmic sound like a great engine turning far below the glacier.
+  - Beat 2: In his sleep he dreams of Keliara's shore and Ronderu correcting his grip, but the dream-Ronderu speaks in a cadence that is not hers.
+  - Beat 3: He wakes with frost on his eyelashes shaped like spiral lines and finds fresh marks near the cave mouth: a tally, five cuts, counting something.
+  - Beat 4: He understands the tally matches his own days on this world so far, and that something below is keeping score of him.
+- Chapter 5: The Door in the Ice
+  - Beat 1: Dawn reveals the dreadnought's shattered command tower rising from the glacier like a black tooth, and Kivan a speck descending toward it.
+  - Beat 2: Qymaen races the last ridge and finds the wreck's main hatch already forced, the edges cut with lightsaber precision days ago — the Jedi has been here before.
+  - Beat 3: Inside the airlock, the walls are covered in frozen condensation arranged in spirals, and every spiral faces inward, toward the deep decks.
+  - Beat 4: From somewhere far below comes a sound Qymaen feels in his tusks: a voice trying out his own name, learning it.
+- Ending hook: Qymaen steps into the dark of the wreck after the Jedi, into a ship where the dead stand frozen at their stations, and the door seals itself behind him with a sound horribly like a swallow.
+
+## DAY 2: The Drowned Deck
+- Purpose: Bring both hunters inside the dreadnought; establish the ship as a character and the Hollow Bridge relic as the prize; end with Kivan taking the relic.
+- Chapter 1: Frozen Watch
+  - Beat 1: Qymaen descends through crew decks where battle-stations crews stand frozen mid-task, preserved by the cold, and forces himself to walk the centerline without looking at their eyes.
+  - Beat 2: He reads the damage pattern and reconstructs the death of the ship: not boarded, not beaten — its own reactor was ordered to breach by someone aboard.
+  - Beat 3: In the officers' wardroom he finds a table still set for a meal and a single chair turned to face the bulkhead, where someone sat listening to the wall.
+  - Beat 4: Carved into that bulkhead, in Basic with a Kalleran accent's spelling habits, is a line of script: THE BRIDGE IS HOLLOW, WALK IT CAREFULLY.
+- Chapter 2: The Killing Corridors
+  - Beat 1: Kivan has gone ahead through the security corridors, and his passing has awakened the wreck: old turret servos track movement, blast doors cycle on stored charge.
+  - Beat 2: Qymaen survives a kill-corridor by moving during the doors' cycling rhythm, counting the intervals like drumbeats, taking a gash from a servo-blade across his forearm.
+  - Beat 3: He realizes the defenses are not random — they herd intruders along one specific route, deeper, toward a destination chosen long before either hunter arrived.
+  - Beat 4: At a junction he finds a dead thing in scorched scavenger armor, killed days ago by a lightsaber, arranged seated and respectful, facing the same deep route.
+- Chapter 3: The Hangar of Teeth
+  - Beat 1: The route opens into the ruined main hangar where dozens of vulture droids hang in their racks like roosting things, and the engine noise below is louder here.
+  - Beat 2: Half the droids activate — not all, only enough — and Qymaen fights a running battle across the racks, spending precious rounds, learning the machines fight to delay, not to kill.
+  - Beat 3: On a raised gantry he glimpses Kivan below him among the droids, saber lit, walking untouched through the crossfire as if the machines were curtaining him.
+  - Beat 4: Their eyes meet across the hangar; Kivan deactivates his blade, says "You should not have followed the voice," and drops through a deck hatch rather than fight.
+- Chapter 4: The Reactor Chasm
+  - Beat 1: The hatch opens onto the great vertical void of the breached reactor shaft, spanned three hundred meters down by the warped spine of the hull — a bridge of naked beams over a glowing dark.
+  - Beat 2: Far below, at the chasm's floor, something radiates cold light that hurts to look at, and the whispering in the walls resolves, briefly, into a woman's laughter Qymaen has not heard in twenty years.
+  - Beat 3: Crossing the beam-bridge, Qymaen is attacked by nothing except his own certainty — twice he steps where a beam is not, saved only by the tally-marks now scratched into his own gauntlet by his other hand.
+  - Beat 4: On the far side he finds Kivan's camp: a bedroll, tea still warm, and a journal open to a page headed SUBJECTS OF THE RELIC — fourteen names crossed out, the fifth freshly written: K. KIVAN.
+- Chapter 5: The Relic Room
+  - Beat 1: Following the journal's route, Qymaen reaches a shielded vault beneath the command tower where the ship's final order was to entomb one cargo above all others.
+  - Beat 2: Inside, on a plinth of fused bone-metal, rests the Hollow Bridge: a curved shard of black crystal in a frame of severed hand-rails, singing quietly in many dead voices.
+  - Beat 3: Kivan is already there, standing before it, and for the first time looks tired; he tells Qymaen he has calculated every outcome of this room and none of them spare either of them.
+  - Beat 4: As Qymaen raises the rifle, Kivan lifts the relic — and the ship's frozen dead all through the hull turn their heads toward the vault at once.
+- Ending hook: Kivan cradles the Hollow Bridge against his chest like an infant and says, gently, "Now I can show you where she sleeps," while every light on every deck dies at once.
+
+## DAY 3: Cold Arithmetic
+- Purpose: Show Kivan's corruption beginning — the relic's power is real and terrible; force Qymaen to survive the ship itself turned against him and to see Ronderu used as a weapon.
+- Chapter 1: Blackout Hunt
+  - Beat 1: Total darkness falls; Kivan moves through it without light while Qymaen navigates by memory, touch-count, and the whisper that now never quite stops.
+  - Beat 2: Blast doors begin hunting him individually, sealing corridor by corridor, herding him down and away from Kivan's path with an intelligence that adapts to his choices.
+  - Beat 3: He escapes a flooding compartment of supercooled coolant with burned hands and realizes the ship is not trying to kill him quickly — it is studying how he solves problems.
+  - Beat 4: Scratched beside a hatch, in his own handwriting he does not remember making, are the words YOU ARE DOING WELL.
+- Chapter 2: The Frozen Dead Speak
+  - Beat 1: In the medical deck, the frozen dead have moved since morning — gathered into ranks facing the direction Kivan went, mouths open in silent uniform speech.
+  - Beat 2: Qymaen catches a dying crew officer's memory through touch when he steadies himself on her shoulder: the captain receiving the entombment order, weeping, obeying.
+  - Beat 3: The relic's voice uses the dead officer's mouth-voice to speak to Qymaen directly, offering him the location of Ronderu's true grave in exchange for letting the Jedi go.
+  - Beat 4: Qymaen refuses aloud, and the entire medical deck exhales at once, frost blooming from every opened mouth like applause.
+- Chapter 3: Vision of the Shore
+  - Beat 1: Cornered at last in a collapsed galley, Qymaen is shown a vision — perfect in every detail of salt and wind — of Ronderu alive, waiting for him, reproachful that he has come with a rifle.
+  - Beat 2: The vision-Ronderu tells him the Jedi is carrying his sister home and that Qymaen has spent twenty years shooting at shadows instead of burying his dead.
+  - Beat 3: He shatters the vision by driving his knife through his own palm and naming what it is: a lie with her face, a lure wearing the honored dead.
+  - Beat 4: The vision tears like cloth, and behind it, for one heartbeat, he sees the truth of the thing speaking: something vast, patient, and starving, wearing the relic like a mask.
+- Chapter 4: The Herd
+  - Beat 1: Kivan's route has released the hangar droids and thawed the ship's automated logs; the whole wreck now converges its attention on Qymaen as prey.
+  - Beat 2: Wounded and low on ammunition, Qymaen turns the hunt inside out, baiting a droid wave into a coolant rupture and riding the steam-geyser up a service shaft.
+  - Beat 3: He surfaces in the command tower's observation blister directly above Kivan's position and finally has the shot he has chased for three days.
+  - Beat 4: Through the scope he watches Kivan kneel among the frozen bridge crew, relic in his lap, answering their silent question — "Did we do right?" — with "Yes," and does not fire.
+- Chapter 5: The Terms
+  - Beat 1: Kivan rises, looks straight up through the blister glass at Qymaen's hidden scope-glare, and speaks as if continuing a conversation: "You didn't shoot. Interesting."
+  - Beat 2: He lays out his calculation plainly: the relic shows him all outcomes, and in every outcome where Qymaen dies here, something worse wakes beneath the ice; he needs the hunter alive.
+  - Beat 3: Kivan returns Qymaen's dropped knife to the foot of the ladder — disarmed, cleaned, oiled — a courtesy that frightens Qymaen more than any attack.
+  - Beat 4: The Jedi announces the terms of their shared journey: together down to the vault where the relic's first bearer sealed Ronderu's bones, because the door opens only for kin-blood or kin-grief, and Qymaen is both.
+- Ending hook: Qymaen takes his knife and does not cut the offered hand, and the two enemies descend together into the dark, the whisper in the walls sounding almost like satisfaction.
+
+## DAY 4: The Whispering War
+- Purpose: Psychological horror peaks; the relic works on both men; the hunt dissolves into complicity, and Qymaen begins to fear the corruption in himself.
+- Chapter 1: Table Set for Three
+  - Beat 1: Kivan leads them down through lower decks where the cold preserves even sound; footsteps ring minutes after they are made, and conversations echo with wrong delays.
+  - Beat 2: In the enlisted mess, the tables have been re-set since yesterday — places laid for two, then, as they watch, a third place assembles itself piece by piece from the dark.
+  - Beat 3: Kivan eats from the third place's plate and thanks the empty chair for the meal; Qymaen marks that the Jedi's precise, economical hands now tremble between gestures.
+  - Beat 4: When Qymaen refuses food, the ship dims insultedly, and frost creeps across his half of the table in a slow spiral.
+- Chapter 2: The Journal's Confession
+  - Beat 1: Qymaen steals a reading of Kivan's journal and learns the fifteen names are previous bearers of the relic, each a Force-sensitive who sought it for a righteous reason.
+  - Beat 2: Each entry ends identically: the bearer reporting perfect clarity, then entries in a second handwriting that neither Kivan nor Qymaen can identify.
+  - Beat 3: The fifteenth entry, Kivan's own, is already half-written ahead of time, describing events of the next two days in past tense, including the sentence: The Kaleesh forgives me on the bridge.
+  - Beat 4: Qymaen closes the journal and says nothing, and understands for the first time that the Jedi may be walking his own fate the way a man walks a plank — informed, willing, doomed.
+- Chapter 3: Scavengers
+  - Beat 1: A salvage crew blasting into the hull from outside breaches a deck near them, and four armed scavengers stumble into the lower dark with lamps and greed.
+  - Beat 2: Kivan moves to shield them, guiding them back toward their breach, and the ship objects: lamps die, hatches cycle shut, the temperature dives past survivable.
+  - Beat 3: The relic offers Kivan a trade in front of Qymaen — the scavengers' warmth for the map to the vault — and Kivan hesitates one second too long before refusing.
+  - Beat 4: The breach collapses; three scavengers die in the ice; the fourth runs screaming into the dark, and the ship's whisper follows him mockingly, repeating his name.
+- Chapter 4: What the Hunter Hears
+  - Beat 1: Alone on watch, Qymaen hears Ronderu's voice again — but now it argues with the other voice, defends him, begs the relic to leave her hunter alone.
+  - Beat 2: He cannot tell whether this is the true Ronderu's remnant caught in the relic, or the relic wearing her loyalty as a newer, sharper lure.
+  - Beat 3: The voice teaches him, unprompted, how to seal the wound in his hand with frost-fire, and the healing works, and that is the most frightening thing that has happened to him on this world.
+  - Beat 4: He examines the tally-marks on his gauntlet and finds new ones, finer, in a feminine hand, counting down instead of up.
+- Chapter 5: The Bargain at the Bulkhead
+  - Beat 1: The final sealed vault-door stands before them, carved inside and out with spirals, warm to the touch in a room sixty degrees below freezing.
+  - Beat 2: Kivan confesses everything: he came to take Ronderu's remains hostage over the clan's war-crimes tribunals, believing justice required leverage; the relic found his righteousness and began eating it.
+  - Beat 3: He asks Qymaen for his grief, formally, as the door's price — kin-blood or kin-grief — and warns that the door will take it whether it is offered kindly or not.
+  - Beat 4: Qymaen presses his bleeding palm and his mother's funerary knot against the spiral, and the door drinks both, opening on a vault where a single sarcophagus waits under a skin of black crystal.
+- Ending hook: The crystal lid is already broken — from the inside — and Ronderu's sarcophagus stands empty except for the relic's frame, which fits it exactly, like a lock returning to its keyhole.
+
+## DAY 5: The Empty Coffin
+- Purpose: The revelation and the fall — Ronderu's remains are not here; Kivan breaks completely; the duel begins in earnest and the transformation completes.
+- Chapter 1: The Vault of Nothing
+  - Beat 1: Kivan's entire calculation collapses: the relic led him here with a promise of remains that were never interred — the vault was built as a trap for seekers, a lure with a coffin in it.
+  - Beat 2: The whisper explains itself with terrible serenity: it does not guard graves; it digs them, and every seeker who carried it was digging toward this room.
+  - Beat 3: Kivan demands the truth of Ronderu, and the relic shows it plainly — she died in the wreck's fall, burned beyond recovery, unnamed ash mixed with ten thousand others in the reactor slag.
+  - Beat 4: Something in the cold logician snaps along its longest, straightest line, and the silence he makes is the loudest thing Qymaen has ever heard.
+- Chapter 2: The Fifteenth Name
+  - Beat 1: Kivan opens the relic's frame and seats it into the coffin's keyhole, and the vault floods with the voices of fourteen dead bearers, all speaking through his mouth in turn.
+  - Beat 2: His cyan blade ignites crimson from hilt to tip, and he apologizes to Qymaen in a perfectly level voice for what the arithmetic now requires.
+  - Beat 3: The ship lurches awake at reactor-depth; the chasm below the beam-bridge begins to glow; every frozen dead thing in the wreck turns to face the vault.
+  - Beat 4: Qymaen runs, and for the first time in the whole hunt the Jedi pursues him, and the difference is the most important fact on the ship.
+- Chapter 3: Prey Turned Predator
+  - Beat 1: The chase goes up through decks that rearrange themselves, hatches opening ahead of crimson light and slamming behind Qymaen's heels.
+  - Beat 2: Kivan no longer runs — he glides, carried by a power he no longer bothers to disguise, narrating calmly through the walls about efficiency and grief and the waste of twenty years.
+  - Beat 3: He peels Qymaen's defenses away layer by layer: burns his rifle from his hands, freezes his boots to a deck, shows him Ronderu dying in real time, screaming his name.
+  - Beat 4: Qymaen survives each blow by surrendering ground and memory, until, backed onto the beam-bridge above the waking chasm, there is nowhere left to retreat to.
+- Chapter 4: The Bridge of Beams
+  - Beat 1: Duel on the naked hull-spine: machete and knife against crimson saber, three hundred meters of darkness below, the relic's song rising from the coffin-vault like heat.
+  - Beat 2: Qymaen fights the best fight of his life and loses it in eleven seconds of impossible speed, disarmed, thrown to his knees, tusks bloodied on the beam.
+  - Beat 3: Kivan stands over him with the saber raised and cannot strike — the journal's prophecy, the forged line in his own future hand, breaks in his grip at the moment of obedience.
+  - Beat 4: He screams — the first wholly human sound he has made in days — and the relic screams with him, furious, and the chasm answers both.
+- Chapter 5: The Choice Refused
+  - Beat 1: Kivan casts the saber away and seizes Qymaen by the breastplate, begging him in the relic's borrowed chorus to finish the prophecy his own hand wrote.
+  - Beat 2: The offer underneath the begging is clear: kill me here, on the bridge, and the door of you closes forever — or take the relic, and dig graves for the galaxy beside me.
+  - Beat 3: Qymaen answers with the only exorcism his people trust: he speaks Ronderu's true name, her full name, the one the relic has never once managed to say.
+  - Beat 4: The vault below shrieks; the beam-bridge shudders; and Kivan's eyes, for one clear instant, are entirely his own again — and entirely lost.
+- Ending hook: The relic releases the ship and takes Kivan whole, lifting him off the bridge into the dark like a caught fish, and Qymaen grabs the falling man's wrist because his hands have never once in his life let go of the fallen.
+
+## DAY 6: Hollow Bridge
+- Purpose: Resolution — Qymaen kills the fallen opponent to free him, confronts the relic with the truth it cannot digest, and leaves transformed: the Force revealed to him as a tool of corruption, not enlightenment.
+- Chapter 1: The Weight
+  - Beat 1: Qymaen hauls Kivan back onto the beams hand over hand while the relic pulls from below with the patience of deep water, whispering bargains up the length of his arm.
+  - Beat 2: It offers Ronderu whole and warm; it offers the fifteen names undone; it offers, last and worst, a universe where nothing that loves anything ever has to be buried.
+  - Beat 3: Kivan, lucid in fragments, helps him hold on and begs him between lapses to let go, calculating aloud the probability that either of them leaves this bridge human.
+  - Beat 4: The beams begin to fail one by one, and the two enemies end chest to chest on the last intact span above the glowing dark, the relic rising around them like a tide.
+- Chapter 2: The Last Calculation
+  - Beat 1: Kivan makes his final computation aloud, calm again now that the variables are few: the relic cannot be carried out, cannot be refused, and cannot be held by anyone who hopes.
+  - Beat 2: He asks Qymaen for the mercy-stroke — not as prophecy now, but as surgery — because a blade through a willing heart is the one argument the relic has never learned to answer.
+  - Beat 3: He puts Qymaen's own knife back in Qymaen's hand, the way he returned it once before at the ladder's foot, and says thank you in advance, in Kalleran, correctly accented.
+  - Beat 4: Qymaen, keeper of the grave-ledger, understands at last that some names can only be protected by adding them to it, and gives Kivan the death the Jedi has been owed since the vault.
+- Chapter 3: The Mercy-Stroke
+  - Beat 1: One stroke, properly made, with the clan-strokes spoken over it; Kivan dies as himself, eyes open, and the relief on his face is the most obscene thing on the ship.
+  - Beat 2: The relic lunges for the escaping life and finds Qymaen standing over the body with the blade still in it, speaking the funeral names, offering it nothing to catch.
+  - Beat 3: Enraged, it shows him everything at once — every dead bearer, every stolen voice, Ronderu's real last moments, the whole archive of grief it feeds on — trying to drown him in sorrow.
+  - Beat 4: Qymaen stands in the flood and lets it break over him without drinking, because his people have always known what the relic never learned: grief is carried, not traded.
+- Chapter 4: The Burial of the Bridge
+  - Beat 1: With Kivan's saber-less hilt and the last of the vault's charges, Qymaen severs the beam-bridge and drops the relic, the coffin-frame, and the vault's keyhole into the reactor chasm together.
+  - Beat 2: The ship dies a second, final time around him — the frozen dead sagging at last from their stations, released, the whisper thinning to silence as the glow below gutters out.
+  - Beat 3: He carries Kivan's body up through the settling wreck and out into the acid rain, which hisses on the Jedi's robes but cannot reach him anymore.
+  - Beat 4: On open ice he builds a pyre with the rites done properly, every stroke drawn true, and adds a sixteenth name to the ledger behind his eyes — the first name he has ever entered there as a debt he paid, not one he is owed.
+- Chapter 5: General
+  - Beat 1: Days later the clan shuttle finds him walking the shore of the frozen sea, thinner, burned, carrying a journal full of another man's handwriting and a hilt that will never light again.
+  - Beat 2: The elders ask what he learned hunting a Jedi, expecting tactics; he tells them the truth — that the power they fear is real, and it is a hook baited with the faces of the dead, and its victims are always volunteers.
+  - Beat 3: They name him general on the spot, for surviving what no warrior has survived, and he accepts because wars need generals the way graves need diggers.
+  - Beat 4: Alone at the rail that night, he feels, once, faint and far below the ice of a different world, a woman's laugh — and checks it against his memory, line by line, until he is certain it is only memory, and lets it go.
+- Ending hook: Qymaen turns his back on the sea and begins the long work of his transformation: a man who has seen what waits inside power, armed with nothing but a ledger of names and the certainty that everything holy is a door somebody forgot to lock.

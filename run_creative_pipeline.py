@@ -108,6 +108,9 @@ def main(
     story_model: str | None = None,
     recap_model: str | None = None,
     visual_model: str | None = None,
+    generate_images: bool = False,
+    image_mode: str = "day",
+    max_images: int | None = None,
 ):
     _install_cancel_handler()
     console = Console() if RICH_AVAILABLE else None
@@ -441,6 +444,45 @@ def main(
         LOGGER.warning("reading exports failed error=%s", exc)
         print(f"  Reading exports failed (non-fatal): {exc}")
 
+    # ── Image generation phase (opt-in via --images) ─────────────────────
+    if generate_images:
+        print("\n" + "=" * 72)
+        print("  PHASE 7: IMAGE GENERATION")
+        print(f"{'=' * 72}\n")
+        from src.utils.drawthings_client import get_drawthings_client
+        from src.utils.image_phase import count_planned_images, generate_episode_images
+
+        dt_client = get_drawthings_client()
+        planned = count_planned_images(story, image_mode)
+        effective = min(planned["total"], max_images) if max_images else planned["total"]
+        print(f"  Mode: {image_mode} | Planned: {planned['total']} | "
+              f"Budget: {effective if max_images else 'unlimited'}")
+
+        if not dt_client.check_connection():
+            print("  Draw Things offline — skipping image generation (non-fatal).")
+            LOGGER.warning("image phase skipped: draw things offline")
+        else:
+            def _img_progress(msg: str) -> None:
+                print(f"  {msg}", flush=True)
+
+            img_start = time.perf_counter()
+            results = generate_episode_images(
+                storage=storage,
+                dt_client=dt_client,
+                episode_id=episode_id,
+                story_md=story,
+                metadata=metadata,
+                mode=image_mode,
+                max_images=max_images,
+                progress=_img_progress,
+            )
+            ok = sum(1 for r in results if "error" not in r)
+            stage_complete("Image generation", img_start)
+            print(f"  Images generated: {ok}/{len(results)} requested")
+            for r in results:
+                if "error" in r:
+                    print(f"    FAILED {r['label']}: {r['error']}")
+
     # ── Series memory: record this episode for future ones ───────────────
     print("\nUpdating series bible...")
     bible_start = time.perf_counter()
@@ -544,6 +586,18 @@ if __name__ == "__main__":
         "--run-token", type=str, default="",
         help="Unique token remote stops match on; not used programmatically.",
     )
+    parser.add_argument(
+        "--images", action="store_true", default=False,
+        help="Generate keyframe images via Draw Things after saving the episode.",
+    )
+    parser.add_argument(
+        "--image-mode", type=str, default="day", choices=["day", "chapter"],
+        help="Image granularity: one hero shot per day (default) or per chapter.",
+    )
+    parser.add_argument(
+        "--max-images", type=int, default=None,
+        help="Generation budget including the cover (e.g. --max-images 4 = cover + 3).",
+    )
     args = parser.parse_args()
     try:
         result = main(
@@ -553,6 +607,9 @@ if __name__ == "__main__":
         story_model=args.story_model,
         recap_model=args.recap_model,
         visual_model=args.visual_model,
+        generate_images=args.images,
+        image_mode=args.image_mode,
+        max_images=args.max_images,
     )
     except GenerationCancelled as exc:
         print(f"\n⚠ Cancelled before a checkpoint existed: {exc}")
