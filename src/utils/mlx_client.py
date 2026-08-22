@@ -419,6 +419,7 @@ class MLXClient:
             method="POST",
         )
         LOGGER.info("using %s model=%s prompt_chars=%s", label, model, len(prompt or ""))
+        got_content = False
         try:
             with _urlopen_with_retries(request, timeout=max(180, max_tokens // 2)) as response:
                 for raw_line in response:
@@ -437,11 +438,20 @@ class MLXClient:
                     if not choices or not isinstance(choices[0], dict):
                         continue
                     delta = choices[0].get("delta") or {}
-                    text = delta.get("content") or delta.get("reasoning") or ""
+                    # Reasoning deltas are NOT answer content. ox-alpha can
+                    # emit 30k+ chars of delta.reasoning before answering;
+                    # treating it as content poisons structured outputs.
+                    text = delta.get("content")
                     if text:
+                        got_content = True
                         yield _strip_think_blocks(str(text))
         except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
             raise RuntimeError(f"{label} streaming request failed: {exc}") from exc
+        if not got_content:
+            raise RuntimeError(
+                f"{label}: stream produced reasoning only and no content — "
+                "the model likely exhausted max_tokens on hidden thinking; "
+                "retry or raise max_tokens.")
 
     def _generate_lmstudio_stream(
         self, model: str, prompt: str, system: str | None,
