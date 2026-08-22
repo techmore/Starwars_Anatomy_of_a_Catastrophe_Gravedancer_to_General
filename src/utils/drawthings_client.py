@@ -142,6 +142,12 @@ class DrawThingsClient:
             "seed": seed,
             "batch_size": 1,
             "n_iter": 1,
+            # Draw Things performance/quality options for Flux.2 Klein
+            # distilled on Apple Silicon (M1 Pro 32GB verified):
+            "tea_cache": True,               # step caching: big speedup
+            "tea_cache_threshold": 0.15,     # strict = better quality
+            "tea_cache_start": 2,
+            "tea_cache_max_skip_steps": 2,   # conservative skipping
         }
         if extra:
             payload.update(extra)
