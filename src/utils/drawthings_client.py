@@ -122,15 +122,15 @@ class DrawThingsClient:
         self,
         prompt: str,
         negative_prompt: str = "",
-        width: int = 1344,
-        height: int = 768,
-        steps: int = 25,
-        cfg: float = 2.5,
-        sampler: str = "Euler a",
+        width: int = 1024,
+        height: int = 576,
+        steps: int = 5,
+        cfg: float = 1.4,
+        sampler: str = "DDIM Trailing",
         seed: int = -1,
         extra: dict[str, Any] | None = None,
     ) -> bytes:
-        """Generate a keyframe image via Flux.2 Klein 4b. Returns PNG bytes."""
+        """Generate a keyframe image via Flux.2 Klein 9B distilled. Returns PNG bytes."""
         payload: dict[str, Any] = {
             "prompt": prompt,
             "negative_prompt": negative_prompt,
