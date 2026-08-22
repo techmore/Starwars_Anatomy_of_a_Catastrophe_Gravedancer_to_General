@@ -17,6 +17,7 @@ from datetime import datetime
 from typing import Any
 
 from src.utils.creative_tables import generate_creative_seed
+from src.utils.export_hook import write_reading_formats
 from src.utils.logging_utils import get_logger
 from src.utils.mlx_client import MLXClient
 from src.utils.prompt_generator import PromptGenerator
@@ -426,6 +427,19 @@ def main(
     stage_complete("Save episode", save_start)
     print(f"  Episode saved: {episode_id}")
     print(f"  Location: episodes/{episode_id}/")
+
+    # ── Reading-format exports (default on; txt/html/epub) ───────────────
+    print("\nExporting reading formats...")
+    export_start = time.perf_counter()
+    try:
+        written = write_reading_formats(
+            storage, episode_id, story, metadata)
+        for path in written:
+            print(f"  Exported: {path}")
+        stage_complete("Reading exports", export_start)
+    except Exception as exc:  # non-fatal
+        LOGGER.warning("reading exports failed error=%s", exc)
+        print(f"  Reading exports failed (non-fatal): {exc}")
 
     # ── Series memory: record this episode for future ones ───────────────
     print("\nUpdating series bible...")

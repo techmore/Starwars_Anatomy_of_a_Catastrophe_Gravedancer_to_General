@@ -26,6 +26,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.utils.creative_tables import generate_creative_seed
+from src.utils.export_hook import write_reading_formats
 from src.utils.logging_utils import get_logger
 from src.utils.prompt_generator import PromptGenerator
 from src.utils.prompt_schema import validate_outline_structure
@@ -302,6 +303,13 @@ def main(seed_value: int, run_dir: Path) -> int:
     for entry in storage.list_checkpoints():
         if entry.get("title") == seed["title"]:
             storage.delete_checkpoint_file(entry.get("path", ""))
+
+    # ── Reading-format exports (default on; txt/html/epub) ───────────────
+    log("export", "writing reading formats...")
+    written = write_reading_formats(storage, episode_id, story, metadata)
+    for path in written:
+        log("export", f"wrote {path}")
+
     print("\n" + "=" * 72)
     print(f"  PIPELINE COMPLETE — episode saved: episodes/{episode_id}/")
     print(f"  Words: {len(story.split()):,} | Chapters: {len(chapters)} | "
