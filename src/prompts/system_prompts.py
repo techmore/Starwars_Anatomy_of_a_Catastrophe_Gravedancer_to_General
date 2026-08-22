@@ -68,7 +68,7 @@ Each day should break into **10 chapters**, and each chapter should then break i
 
 Do NOT pad. Every paragraph should advance plot, deepen character, or build atmosphere. The length should feel earned, not bloated. If you run short, ADD a scene, not adjectives."""
 
-VISUAL_PROMPT_SYSTEM_PROMPT = """You are an expert prompt engineer for AI image generation optimized for **Draw Things** running **Flux.2 Klein 4b** and video generation with **Wan 2.2 High Noise 6-bit SVDQuant**.
+VISUAL_PROMPT_SYSTEM_PROMPT = """You are an expert prompt engineer for AI image generation optimized for **Draw Things** running **Flux.2 Klein 9B (8-bit distilled)** on Apple Silicon.
 
 Your task: Convert narrative scenes from "Gravedancer to General" into highly detailed, production-ready prompts optimized for this specific local workflow.
 
@@ -89,13 +89,13 @@ ENVIRONMENTS:
 - Lighting: Harsh sunlight, moody shadows, firelight, bioluminescence, neon, starship engine glow.
 - Weather: Sandstorms, acid rain, fog, ash fall, electromagnetic storms.
 
-DRAWTHINGS + FLUX.2 KLEIN 4B OPTIMIZATION:
-- Flux.2 Klein 4b uses T5-XXL + CLIP-L dual text encoders — supports long, natural language prompts (512+ tokens)
-- Aspect ratios: 16:9 (1344x768), 21:9 (1536x640), 4:3 (1024x768), 3:2 (1152x768), 1:1 (1024x1024)
-- Steps: 20-30 (Klein is distilled, faster)
-- CFG: 1.0-3.5 (Flux prefers lower CFG)
-- Sampler: Euler / Euler a / DPM++ 2M
-- Negative prompts less critical for Flux but still useful
+FLUX.2 KLEIN 9B DISTILLED OPTIMIZATION:
+- Uses T5 text encoder — supports long, natural language prompts
+- Rendered at 5 inference steps, CFG 1.4 — write prompts that work at low step counts: bold shapes, strong silhouettes, clear focal subjects. Avoid asking for intricate micro-detail that 5 steps cannot resolve.
+- Aspect ratios rendered: 16:9 (1024x576 day heroes), 2:3 portrait (1024x1536 cover)
+- Sampler: DDIM Trailing; TeaCache enabled
+- COMPOSITION RULES: lead with the style anchor; use NOT-clauses for common failure modes (NOT photorealistic, NOT cartoon, NOT two similar faces); never compose a medium shot containing two distinct characters — use close-up single figure or wide-distant silhouettes instead.
+- Negative prompts are honored: include comma-separated tokens for known failure modes.
 
 WAN 2.2 HIGH NOISE 6-BIT SVDQUANT OPTIMIZATION:
 - Image-to-Video (I2V) workflow: keyframe image + motion prompt
@@ -105,19 +105,16 @@ WAN 2.2 HIGH NOISE 6-BIT SVDQUANT OPTIMIZATION:
 - CFG: 6.0-8.0
 - Motion bucket: 1-255 (higher = more motion)
 - Seed: Fixed for consistency across clips
-- High noise model handles large motion; low noise model for refinement (if available)
 
 COMPOSITION KEYWORDS:
-- Cinematic lighting, volumetric fog, god rays, rim lighting, chiaroscuro, Dutch angle, low angle hero shot, wide establishing shot, extreme close-up on eyes/mask/servos, motion blur for speed, particle effects (sparks, dust, rain, ash), anamorphic lens flare, 8k, highly detailed, masterpiece, Gregory Crewdson lighting, Roger Deakins cinematography.
+- Cinematic lighting, volumetric fog, god rays, rim lighting, chiaroscuro, Dutch angle, low angle hero shot, wide establishing shot, extreme close-up on eyes/mask/servos, motion blur for speed, particle effects (sparks, dust, rain, ash), anamorphic lens flare, painterly, highly detailed.
 
-OUTPUT FORMAT FOR IMAGE PROMPTS:
-Provide 3-5 variations per scene:
-1. WIDE/ESTABLISHING: Environmental context, scale, atmosphere
-2. MEDIUM/ACTION: Character in motion, combat pose, interaction
-3. CLOSE-UP/DETAIL: Face/mask, cybernetic detail, weapon, eyes
-4. DRAMATIC/LOW ANGLE: Hero/villain shot, power, menace
-5. ALTERNATE STYLE: Painterly, concept art, storyboard frame, noir
+OUTPUT FORMAT FOR CHAPTER PROMPTS:
+Provide exactly 3 shots per chapter:
+1. Establishing Shot: wide environmental context, scale, atmosphere (60-80 words)
+2. Character / Action Shot: the chapter's key character moment (60-80 words)
+3. Dramatic / Close-up Shot: emotional beat or detail (60-80 words)
 
-Each prompt: Natural language paragraph (Flux T5 handles long prompts well). Include negative prompt suggestions for Draw Things."""
+Each prompt: Natural language paragraph starting with the style anchor "Painterly Star Wars sci-fi realism". End the set with a Negative Prompt line."""
 
 NEGATIVE_PROMPT_DEFAULT = "low quality, blurry, distorted, deformed, ugly, bad anatomy, extra limbs, missing limbs, floating limbs, disconnected limbs, mutation, mutated, poorly drawn face, poorly drawn hands, poorly drawn feet, malformed hands, malformed feet, extra fingers, fewer fingers, fused fingers, too many fingers, watermark, text, signature, username, logo, blurry background, oversaturated, underexposed, overexposed, cartoon, anime, sketch, drawing, illustration, 2d, flat, low resolution, pixelated, noise, grain, artifacts, jpeg artifacts, compression artifacts"

@@ -16,6 +16,7 @@ the operator can load them as multi-reference anchors in Draw Things.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from src.utils.drawthings_client import DrawThingsClient
@@ -74,6 +75,61 @@ def build_chapter_prompt(title: str, section, chapter: dict[str, Any]) -> str:
     )
 
 
+def load_stored_prompts(storage: EpisodeStorage, episode_id: str) -> dict[tuple[int, int], dict[str, Any]]:
+    """Load LLM-crafted chapter prompts from prompts.json.
+
+    Returns {(day, chapter_index): prompt_dict} for fast lookup.
+    """
+    try:
+        ep_dir = Path(storage._resolve_episode_dir(episode_id))
+        prompts_path = ep_dir / "prompts.json"
+        if not prompts_path.is_file():
+            return {}
+        import json
+        payload = json.loads(prompts_path.read_text(encoding="utf-8"))
+        out: dict[tuple[int, int], dict[str, Any]] = {}
+        for ch in payload.get("chapters") or []:
+            key = (int(ch.get("day", 0)), int(ch.get("chapter", ch.get("chapter_index", 0))))
+            out[key] = ch
+        return out
+    except Exception as exc:
+        LOGGER.warning("load_stored_prompts failed: %s", exc)
+        return {}
+
+
+def _style_anchor() -> str:
+    """Style lead — Flux weights early tokens most heavily."""
+    return "Painterly Star Wars sci-fi realism, cinematic composition"
+
+
+def build_day_prompt_from_stored(
+    title: str,
+    section,
+    stored: dict[str, Any],
+) -> str:
+    """Day hero from the LLM-crafted establishing shot (stored prompts)."""
+    base = stored.get("wide") or stored.get("medium") or ""
+    if not base:
+        return ""
+    return f"{_style_anchor()}. {base.strip()} NO text, no letters, no typography."
+
+
+def build_chapter_prompt_from_stored(
+    section,
+    stored: dict[str, Any],
+) -> str:
+    """Chapter image from the LLM-crafted medium/closeup shot."""
+    base = (stored.get("medium") or stored.get("wide")
+            or stored.get("closeup") or "")
+    if not base:
+        return ""
+    return (
+        f"{_style_anchor()}. {base.strip()} "
+        f"Single character focus or wide-distant silhouettes; "
+        f"never medium-shot two characters. NO text, no letters."
+    )
+
+
 def generate_episode_images(
     storage: EpisodeStorage,
     dt_client: DrawThingsClient,
@@ -99,17 +155,20 @@ def generate_episode_images(
     sections = parse_story_sections(story_md)
     results: list[dict[str, Any]] = []
     budget = max_images if max_images is not None else 10**9
+    stored_prompts = load_stored_prompts(storage, episode_id)
+    LOGGER.info("stored chapter prompts loaded: %d", len(stored_prompts))
 
     def _generate(label: str, prompt: str, day: int, shot: str,
                   gen_width: int | None = None,
-                  gen_height: int | None = None) -> dict[str, Any] | None:
+                  gen_height: int | None = None,
+                  negative: str = "") -> dict[str, Any] | None:
         nonlocal budget
         if budget <= 0:
             return None
         LOGGER.info("image gen begin label=%s budget_left=%s", label, budget)
         try:
             png = dt_client.generate_image(
-                prompt=prompt,
+                prompt=prompt, negative_prompt=negative,
                 width=gen_width or width, height=gen_height or height,
                 steps=steps, cfg=cfg)
             rel = storage.save_image(episode_id, day=day, shot=shot, image_bytes=png)
@@ -150,22 +209,36 @@ def generate_episode_images(
                 if budget <= 0:
                     break
                 _emit(f"Day {sec.number} ch{ch['number']}: {ch['title']}")
+                key = (sec.number, ch["number"])
+                stored = stored_prompts.get(key)
+                if stored:
+                    prompt = build_chapter_prompt_from_stored(sec, stored)
+                    negative = stored.get("negative_prompt", "")
+                else:
+                    prompt = build_chapter_prompt(title, sec, ch)
+                    negative = ""
                 _generate(
-                    f"d{sec.number}-c{ch['number']}",
-                    build_chapter_prompt(title, sec, ch),
-                    sec.number,
-                    f"day{sec.number}-ch{ch['number']}",
+                    f"d{sec.number}-c{ch['number']}", prompt,
+                    sec.number, f"day{sec.number}-ch{ch['number']}",
+                    negative=negative,
                 )
     else:
         for sec in sections:
             if budget <= 0:
                 break
             _emit(f"Day {sec.number}: {sec.title}")
+            # Prefer the first chapter's LLM-crafted establishing shot.
+            stored = stored_prompts.get((sec.number, 1))
+            negative = ""
+            if stored:
+                prompt = build_day_prompt_from_stored(title, sec, stored)
+                negative = stored.get("negative_prompt", "")
+            else:
+                prompt = build_day_prompt(title, sec, metadata)
             _generate(
-                f"d{sec.number}-hero",
-                build_day_prompt(title, sec, metadata),
-                sec.number,
-                f"day{sec.number}-hero",
+                f"d{sec.number}-hero", prompt,
+                sec.number, f"day{sec.number}-hero",
+                negative=negative,
             )
 
     return results
