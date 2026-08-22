@@ -606,8 +606,14 @@ if __name__ == "__main__":
         help="Generate keyframe images via Draw Things after saving the episode.",
     )
     parser.add_argument(
-        "--image-mode", type=str, default="day", choices=["day", "chapter"],
-        help="Image granularity: one hero shot per day (default) or per chapter.",
+        "--image-mode", type=str, default=None, choices=["day", "chapter"],
+        help="Image granularity: one hero shot per day (default) or per chapter. "
+             "Implied by --chapters.",
+    )
+    parser.add_argument(
+        "--chapters", action="store_true", default=False,
+        help="Shorthand for --images --image-mode chapter: generate one image "
+             "per chapter plus the cover (~36 for a 6-day episode).",
     )
     parser.add_argument(
         "--max-images", type=int, default=None,
@@ -627,10 +633,10 @@ if __name__ == "__main__":
         story_model=args.story_model,
         recap_model=args.recap_model,
         visual_model=args.visual_model,
-        generate_images=args.images,
-        image_mode=args.image_mode,
+        generate_images=args.images or args.chapters,
+        image_mode=args.image_mode or ("chapter" if args.chapters else "day"),
         max_images=args.max_images,
-        generate_refs=args.refs,
+        generate_refs=args.refs or args.chapters,
     )
     except GenerationCancelled as exc:
         print(f"\n⚠ Cancelled before a checkpoint existed: {exc}")
