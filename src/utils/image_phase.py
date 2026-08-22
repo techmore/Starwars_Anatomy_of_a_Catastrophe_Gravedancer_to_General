@@ -100,14 +100,18 @@ def generate_episode_images(
     results: list[dict[str, Any]] = []
     budget = max_images if max_images is not None else 10**9
 
-    def _generate(label: str, prompt: str, day: int, shot: str) -> dict[str, Any] | None:
+    def _generate(label: str, prompt: str, day: int, shot: str,
+                  gen_width: int | None = None,
+                  gen_height: int | None = None) -> dict[str, Any] | None:
         nonlocal budget
         if budget <= 0:
             return None
         LOGGER.info("image gen begin label=%s budget_left=%s", label, budget)
         try:
             png = dt_client.generate_image(
-                prompt=prompt, width=width, height=height, steps=steps, cfg=cfg)
+                prompt=prompt,
+                width=gen_width or width, height=gen_height or height,
+                steps=steps, cfg=cfg)
             rel = storage.save_image(episode_id, day=day, shot=shot, image_bytes=png)
             budget -= 1
             entry = {"label": label, "path": rel, "prompt_chars": len(prompt)}
@@ -119,15 +123,22 @@ def generate_episode_images(
             results.append({"label": label, "error": str(exc)})
             return None
 
-    # Cover always comes first.
+    # Cover: book-cover class — 2:3 portrait, poster tone, iconic single figure.
+    # Rendered at cover resolution regardless of the day-hero size.
     banner_setting = str(metadata.get("setting", "")).split(".")[0]
+    jedi = metadata.get("jedi_name", "")
     cover_prompt = (
-        f"Epic cinematic banner, painterly Star Wars realism. Episode '{title}'. "
-        f"{banner_setting}. The hunter-warlord and the Jedi adversary in opposition, "
-        f"wide-distant silhouettes across a monumental landscape. "
-        f"Volumetric light, NO text, no letters."
+        "Book cover art, portrait orientation, painterly Star Wars sci-fi realism. "
+        f"'{title}'. A lone armored hunter-warrior with curved tusks stands in the "
+        f"foreground, seen from behind at low angle, cloak whipping in wind, facing "
+        + ("a distant robed figure with a cyan lightsaber. " if jedi
+           else "a monumental ruined structure. ")
+        + f"{banner_setting} below, monumental sky above, dramatic god-rays, "
+        "high-contrast poster composition with strong negative space at the top "
+        "for a title, iconic silhouette, NO text, no letters, no words, no typography."
     )
-    _generate("cover", cover_prompt, 0, "banner")
+    cover_w, cover_h = 1024, 1536  # 2:3 book cover
+    _generate("cover", cover_prompt, 0, "banner", cover_w, cover_h)
 
     def _emit(msg: str) -> None:
         if progress:
