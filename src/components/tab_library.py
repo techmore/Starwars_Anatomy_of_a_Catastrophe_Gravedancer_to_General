@@ -5,6 +5,7 @@ from pathlib import Path
 
 import streamlit as st
 
+from src.utils.export_formats import suggest_file_stem, to_epub_bytes, to_html, to_plain_text
 from src.utils.session_state import (
     build_episode_full_json_export,
     get_episode_prompt_sets,
@@ -154,6 +155,49 @@ def render_library_tab(context):
             prompt_summary = render_episode_prompt_archive_summary(st, episode)
             st.caption(f"Saved prompt sets: {prompt_summary['prompt_sets']}")
 
+            stem = suggest_file_stem(ep_id, episode["metadata"].get("title", "episode"))
+            story_md = episode.get("story", "")
+            meta = episode.get("metadata", {})
+
+            st.markdown("#### Reading formats")
+            read_col1, read_col2, read_col3 = st.columns(3)
+            with read_col1:
+                st.download_button(
+                    "Download Plain Text (.txt)",
+                    data=to_plain_text(meta.get("title", "Episode"), story_md, meta),
+                    file_name=f"{stem}.txt",
+                    mime="text/plain",
+                    key=f"dl_txt_{ep_id}",
+                )
+            with read_col2:
+                st.download_button(
+                    "Download Web (.html)",
+                    data=to_html(meta.get("title", "Episode"), story_md, meta),
+                    file_name=f"{stem}.html",
+                    mime="text/html",
+                    key=f"dl_html_{ep_id}",
+                )
+            with read_col3:
+                cover = _load_banner_cover(storage, ep_id)
+                try:
+                    epub_bytes = to_epub_bytes(
+                        meta.get("title", "Episode"), story_md, meta,
+                        cover_image=cover,
+                    )
+                except Exception as exc:
+                    st.error(f"EPUB export failed: {exc}")
+                    epub_bytes = b""
+                if epub_bytes:
+                    st.download_button(
+                        "Download eBook (.epub)",
+                        data=epub_bytes,
+                        file_name=f"{stem}.epub",
+                        mime="application/epub+zip",
+                        key=f"dl_epub_{ep_id}",
+                    )
+            st.caption("The HTML file prints cleanly to PDF from any browser (File → Print).")
+
+            st.markdown("#### Data & archive")
             exp_col1, exp_col2, exp_col3 = st.columns(3)
 
             with exp_col1:
@@ -271,6 +315,26 @@ gravedancer-to-general/
 6. Save videos to `videos/episode-XXX/`
 7. Commit everything to your GitHub repo
         """)
+
+
+def _load_banner_cover(storage, ep_id):
+    """Return the newest saved banner image bytes for use as an EPUB cover."""
+    try:
+        ep_dir = storage._resolve_episode_dir(ep_id)
+    except Exception:
+        return None
+    imgs_dir = Path(ep_dir) / "images"
+    if not imgs_dir.is_dir():
+        return None
+    images = sorted(imgs_dir.glob("*.png"))
+    banners = [p for p in images if "banner" in p.name.lower()]
+    candidates = banners or images
+    if not candidates:
+        return None
+    try:
+        return max(candidates, key=lambda p: p.stat().st_mtime).read_bytes()
+    except OSError:
+        return None
 
 
 def _render_library_visual_workflow(storage, prompt_gen, dt_client, story_gen, model, temperature, episode):

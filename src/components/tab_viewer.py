@@ -4,6 +4,7 @@
 import streamlit as st
 
 from src.components.ui import aspect_to_dims, copy_button
+from src.utils.export_formats import suggest_file_stem, to_epub_bytes, to_html, to_plain_text
 from src.utils.logging_utils import start_new_run_log
 from src.utils.session_state import (
     episode_selector_label,
@@ -93,6 +94,7 @@ def render_viewer_tab(context):
                              help="Generate image prompts and render keyframes for this episode")
     if not show_visuals:
         render_story_days(story_gen, story)
+        _render_export_section(st, storage, selected_id, episode)
         _render_danger_zone(st, storage, selected_id)
         return
 
@@ -165,6 +167,53 @@ def _render_editor(st, storage, story, selected_id):
     with col_cancel:
         if st.button("Cancel"):
             st.rerun()
+
+
+def _render_export_section(st, storage, selected_id, episode):
+    """Reader-facing export downloads directly inside the Viewer."""
+    st.markdown("---")
+    with st.expander("Export Reading Formats", expanded=False):
+        meta = episode.get("metadata", {})
+        title = meta.get("title", "Episode")
+        story_md = episode.get("story", "")
+        stem = suggest_file_stem(selected_id, title)
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.download_button(
+                "Plain Text (.txt)",
+                data=to_plain_text(title, story_md, meta),
+                file_name=f"{stem}.txt",
+                mime="text/plain",
+                key=f"viewer_dl_txt_{selected_id}",
+            )
+        with col2:
+            st.download_button(
+                "Web (.html)",
+                data=to_html(title, story_md, meta),
+                file_name=f"{stem}.html",
+                mime="text/html",
+                key=f"viewer_dl_html_{selected_id}",
+            )
+        with col3:
+            try:
+                from src.components.tab_library import _load_banner_cover
+                cover = _load_banner_cover(storage, selected_id)
+            except Exception:
+                cover = None
+            try:
+                epub_bytes = to_epub_bytes(title, story_md, meta, cover_image=cover)
+            except Exception as exc:
+                st.error(f"EPUB export failed: {exc}")
+                epub_bytes = b""
+            if epub_bytes:
+                st.download_button(
+                    "eBook (.epub)",
+                    data=epub_bytes,
+                    file_name=f"{stem}.epub",
+                    mime="application/epub+zip",
+                    key=f"viewer_dl_epub_{selected_id}",
+                )
+        st.caption("Markdown, JSON, and zip archive exports live in the Library tab.")
 
 
 def _render_danger_zone(st, storage, selected_id):

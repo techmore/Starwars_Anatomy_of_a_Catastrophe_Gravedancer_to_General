@@ -4,3 +4,4 @@ mlx-lm @ git+https://github.com/ml-explore/mlx-lm.git
 mlx-optiq
 rich>=14.0.0
 textual>=8.0.0
+ebooklib>=0.20
