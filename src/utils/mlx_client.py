@@ -432,7 +432,7 @@ class MLXClient:
                     if not choices or not isinstance(choices[0], dict):
                         continue
                     delta = choices[0].get("delta") or {}
-                    text = delta.get("content")
+                    text = delta.get("content") or delta.get("reasoning") or ""
                     if text:
                         yield _strip_think_blocks(str(text))
         except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
