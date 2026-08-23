@@ -38,6 +38,10 @@ OPENAI_STREAM_SOCKET_TIMEOUT = int(os.environ.get(
     "GRAVEDANCER_STREAM_TIMEOUT_S", "240"))
 # Transport-level retries (stall/timeout/connection resets) per stream call.
 OPENAI_STREAM_ATTEMPTS = 3
+# Wall-clock budget per streaming attempt. SSE keepalive traffic defeats a
+# socket timeout, so a wedged stream also needs an absolute deadline.
+OPENAI_STREAM_DEADLINE_S = int(os.environ.get(
+    "GRAVEDANCER_STREAM_DEADLINE_S", "1500"))
 OPENCODE_PREFIX = "opencode:"
 OPENCODE_DEFAULT_MODEL = "opencode-go/deepseekv4-free"
 
@@ -470,6 +474,7 @@ class MLXClient:
                         label, model, len(prompt or ""), attempt)
             got_content = False
             buffered: list[str] = []
+            deadline = time.monotonic() + OPENAI_STREAM_DEADLINE_S
             try:
                 # Socket timeout applies per read(): a healthy SSE stream
                 # emits deltas continuously, so silence beyond this value
@@ -477,6 +482,10 @@ class MLXClient:
                 with _urlopen_with_retries(
                         request, timeout=OPENAI_STREAM_SOCKET_TIMEOUT) as response:
                     for raw_line in response:
+                        if time.monotonic() > deadline:
+                            raise TimeoutError(
+                                f"stream exceeded {OPENAI_STREAM_DEADLINE_S}s "
+                                "wall-clock budget (keepalive-fed wedge?)")
                         line = raw_line.decode("utf-8") if isinstance(raw_line, bytes) else raw_line
                         line = line.strip()
                         if not line or not line.startswith("data:"):
