@@ -28,6 +28,9 @@ BONSAI_REPETITION_CONTEXT = 256
 BONSAI_FREQUENCY_PENALTY = 0.04
 LMSTUDIO_PREFIX = "lmstudio:"
 LMSTUDIO_URL = "http://127.0.0.1:1234/v1/chat/completions"
+# Cap for the reasoning-exhaustion auto-retry (budget doubles per attempt).
+OPENAI_REASONING_RETRY_MAX_TOKENS = int(os.environ.get(
+    "GRAVEDANCER_REASONING_RETRY_MAX_TOKENS", "36000"))
 OPENCODE_PREFIX = "opencode:"
 OPENCODE_DEFAULT_MODEL = "opencode-go/deepseekv4-free"
 
@@ -394,6 +397,36 @@ class MLXClient:
             raise RuntimeError(
                 f"{label}: no API key configured. Set NOUS_API_KEY (or the "
                 "relevant key env var) and retry.")
+        try:
+            yield from self._openai_stream_once(
+                base_url, api_key, model, prompt, system,
+                temperature, top_p, max_tokens, label)
+            return
+        except RuntimeError as exc:
+            # Reasoning-heavy models sometimes burn the whole budget on
+            # hidden thinking and emit zero answer tokens. Retry with more
+            # headroom rather than failing an hours-long pipeline run.
+            if "reasoning only" not in str(exc):
+                raise
+        doubled = min(max_tokens * 2, OPENAI_REASONING_RETRY_MAX_TOKENS)
+        if doubled <= max_tokens:
+            raise RuntimeError(
+                f"{label}: stream produced reasoning only and no content even "
+                f"at max_tokens={max_tokens} (retry cap reached).")
+        LOGGER.warning(
+            "%s: reasoning-only exhaustion at max_tokens=%s; retrying with %s",
+            label, max_tokens, doubled)
+        yield from self._openai_stream_once(
+            base_url, api_key, model, prompt, system,
+            temperature, top_p, doubled, label)
+
+    def _openai_stream_once(
+        self, base_url: str, api_key: str, model: str,
+        prompt: str, system: str | None,
+        temperature: float, top_p: float, max_tokens: int,
+        label: str = "OpenAI-compatible API",
+    ) -> Iterable[str]:
+        """One streaming attempt; raises on transport errors or empty output."""
         url = f"{base_url.rstrip('/')}/chat/completions"
         messages = []
         if system:
