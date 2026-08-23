@@ -31,6 +31,13 @@ LMSTUDIO_URL = "http://127.0.0.1:1234/v1/chat/completions"
 # Cap for the reasoning-exhaustion auto-retry (budget doubles per attempt).
 OPENAI_REASONING_RETRY_MAX_TOKENS = int(os.environ.get(
     "GRAVEDANCER_REASONING_RETRY_MAX_TOKENS", "36000"))
+# Per-read socket timeout for OpenAI-compatible streams. A healthy stream
+# emits deltas continuously; a longer silence means a dead connection and
+# must surface quickly instead of blocking for max(180, max_tokens // 2)s.
+OPENAI_STREAM_SOCKET_TIMEOUT = int(os.environ.get(
+    "GRAVEDANCER_STREAM_TIMEOUT_S", "240"))
+# Transport-level retries (stall/timeout/connection resets) per stream call.
+OPENAI_STREAM_ATTEMPTS = 3
 OPENCODE_PREFIX = "opencode:"
 OPENCODE_DEFAULT_MODEL = "opencode-go/deepseekv4-free"
 
@@ -426,7 +433,12 @@ class MLXClient:
         temperature: float, top_p: float, max_tokens: int,
         label: str = "OpenAI-compatible API",
     ) -> Iterable[str]:
-        """One streaming attempt; raises on transport errors or empty output."""
+        """One streaming attempt; raises on transport errors or empty output.
+
+        Chunks are buffered and yielded only after the stream completes
+        cleanly, so a mid-stream failure can be retried without emitting
+        partial text to the caller.
+        """
         url = f"{base_url.rstrip('/')}/chat/completions"
         messages = []
         if system:
@@ -440,51 +452,68 @@ class MLXClient:
             "max_tokens": max_tokens,
             "stream": True,
         }).encode("utf-8")
-        request = urllib.request.Request(
-            url, data=payload,
-            headers={
-                "Content-Type": "application/json",
-                "Accept": "text/event-stream",
-                "Authorization": f"Bearer {api_key}",
-                # Nous' edge (Cloudflare) rejects default urllib UA (error 1010)
-                "User-Agent": "GravedancerPipeline/1.0",
-            },
-            method="POST",
-        )
-        LOGGER.info("using %s model=%s prompt_chars=%s", label, model, len(prompt or ""))
-        got_content = False
-        try:
-            with _urlopen_with_retries(request, timeout=max(180, max_tokens // 2)) as response:
-                for raw_line in response:
-                    line = raw_line.decode("utf-8") if isinstance(raw_line, bytes) else raw_line
-                    line = line.strip()
-                    if not line or not line.startswith("data:"):
-                        continue
-                    line = line[5:].strip()
-                    if line == "[DONE]":
-                        return
-                    try:
-                        event = json.loads(line)
-                    except json.JSONDecodeError:
-                        continue
-                    choices = event.get("choices") or []
-                    if not choices or not isinstance(choices[0], dict):
-                        continue
-                    delta = choices[0].get("delta") or {}
-                    # Reasoning deltas are NOT answer content. ox-alpha can
-                    # emit 30k+ chars of delta.reasoning before answering;
-                    # treating it as content poisons structured outputs.
-                    text = delta.get("content")
-                    if text:
-                        got_content = True
-                        yield _strip_think_blocks(str(text))
-        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
-            raise RuntimeError(f"{label} streaming request failed: {exc}") from exc
-        if not got_content:
+
+        last_error: Exception | None = None
+        for attempt in range(1, OPENAI_STREAM_ATTEMPTS + 1):
+            request = urllib.request.Request(
+                url, data=payload,
+                headers={
+                    "Content-Type": "application/json",
+                    "Accept": "text/event-stream",
+                    "Authorization": f"Bearer {api_key}",
+                    # Nous' edge (Cloudflare) rejects default urllib UA (error 1010)
+                    "User-Agent": "GravedancerPipeline/1.0",
+                },
+                method="POST",
+            )
+            LOGGER.info("using %s model=%s prompt_chars=%s attempt=%s",
+                        label, model, len(prompt or ""), attempt)
+            got_content = False
+            buffered: list[str] = []
+            try:
+                # Socket timeout applies per read(): a healthy SSE stream
+                # emits deltas continuously, so silence beyond this value
+                # means a dead connection — fail fast and retry.
+                with _urlopen_with_retries(
+                        request, timeout=OPENAI_STREAM_SOCKET_TIMEOUT) as response:
+                    for raw_line in response:
+                        line = raw_line.decode("utf-8") if isinstance(raw_line, bytes) else raw_line
+                        line = line.strip()
+                        if not line or not line.startswith("data:"):
+                            continue
+                        line = line[5:].strip()
+                        if line == "[DONE]":
+                            break
+                        try:
+                            event = json.loads(line)
+                        except json.JSONDecodeError:
+                            continue
+                        choices = event.get("choices") or []
+                        if not choices or not isinstance(choices[0], dict):
+                            continue
+                        delta = choices[0].get("delta") or {}
+                        # Reasoning deltas are NOT answer content. ox-alpha can
+                        # emit 30k+ chars of delta.reasoning before answering;
+                        # treating it as content poisons structured outputs.
+                        text = delta.get("content")
+                        if text:
+                            got_content = True
+                            buffered.append(_strip_think_blocks(str(text)))
+            except (urllib.error.URLError, TimeoutError, OSError) as exc:
+                last_error = exc
+                LOGGER.warning("%s stream stalled/failed (attempt %s/%s): %s",
+                               label, attempt, OPENAI_STREAM_ATTEMPTS, exc)
+                continue
+            if got_content:
+                yield from buffered
+                return
+            # Stream completed cleanly but produced no answer tokens.
             raise RuntimeError(
                 f"{label}: stream produced reasoning only and no content — "
                 "the model likely exhausted max_tokens on hidden thinking; "
                 "retry or raise max_tokens.")
+        raise RuntimeError(f"{label}: streaming failed after "
+                           f"{OPENAI_STREAM_ATTEMPTS} attempts: {last_error}")
 
     def _generate_lmstudio_stream(
         self, model: str, prompt: str, system: str | None,
