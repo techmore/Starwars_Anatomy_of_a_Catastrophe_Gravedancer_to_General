@@ -122,8 +122,8 @@ def render_viewer_tab(context):
         "Aspect ratio", ["16:9", "21:9", "4:3", "3:2", "1:1"], index=0,
         key="viewer_ar",
     )
-    steps = st.slider("Steps", 10, 40, 25, key="viewer_steps")
-    cfg = st.slider("CFG", 1.0, 8.0, 2.5, 0.1, key="viewer_cfg")
+    steps = st.slider("Steps", 2, 40, 5, key="viewer_steps")
+    cfg = st.slider("CFG", 1.0, 8.0, 1.4, 0.1, key="viewer_cfg")
     dt_ok = dt_client.check_connection()
     if not dt_ok:
         st.warning("Draw Things offline — prompt generation still works, rendering skipped.")

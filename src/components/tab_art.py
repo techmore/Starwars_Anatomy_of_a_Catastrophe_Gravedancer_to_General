@@ -54,9 +54,9 @@ def render_art_stage(context):
             key="art_aspect",
         )
     with col2:
-        steps = st.slider("Steps", min_value=10, max_value=40, value=25, key="art_steps")
+        steps = st.slider("Steps", min_value=2, max_value=40, value=5, key="art_steps")
     with col3:
-        cfg = st.slider("CFG", min_value=1.0, max_value=8.0, value=2.5, step=0.1, key="art_cfg")
+        cfg = st.slider("CFG", min_value=1.0, max_value=8.0, value=1.4, step=0.1, key="art_cfg")
 
     save_mode = st.radio(
         "When saving day prompts",
