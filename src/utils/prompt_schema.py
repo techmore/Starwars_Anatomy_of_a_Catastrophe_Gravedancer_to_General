@@ -12,11 +12,15 @@ from typing import Any
 
 
 def _daily_target_tokens() -> int:
-    """Read the daily token budget, tolerating a malformed env override."""
+    """Read the daily token budget, tolerating a malformed env override.
+
+    Fast mode (GRAVEDANCER_FAST=1) drops the budget to ~40% for quicker runs.
+    """
+    default = "18000" if os.environ.get("GRAVEDANCER_FAST", "").strip() in {"1", "true", "yes"} else "45000"
     try:
-        return int(os.environ.get("GRAVEDANCER_DAILY_TARGET_TOKENS", "45000"))
-    except (TypeError, ValueError):
-        return 45000
+        return int(os.environ.get("GRAVEDANCER_DAILY_TARGET_TOKENS", default))
+    except ValueError:
+        return int(default)
 
 
 # Shared constants

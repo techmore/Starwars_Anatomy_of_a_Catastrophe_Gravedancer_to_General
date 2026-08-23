@@ -523,7 +523,8 @@ Do not retell the plot beat-by-beat. Do not comment on style or quality. Facts o
         outline_max_tokens: int | None = None,
         section_max_tokens: int | None = None,
         checkpoint_callback: Callable[[int, str, str], None] | None = None,
-    ) -> str:
+        return_timings: bool = False,
+    ) -> str | tuple[str, dict[str, Any]]:
         """Generate outline first, then expand each day.
 
         Continuity: a short recap is generated at each day boundary and every
@@ -531,6 +532,8 @@ Do not retell the plot beat-by-beat. Do not comment on style or quality. Facts o
         addition to the prose tail. ``day_recaps`` seeds previously stored
         recaps (checkpoint resume) so resumed runs keep the same context.
         """
+        day_timings: list[dict[str, Any]] = []
+        outline_elapsed = 0.0
         LOGGER.info(
             "multi-pass start title=%s days=%s model=%s outline_present=%s draft_only=%s temperature=%.2f",
             title,
@@ -625,6 +628,7 @@ Do not retell the plot beat-by-beat. Do not comment on style or quality. Facts o
                 len(outline),
                 time.perf_counter() - outline_start,
             )
+            outline_elapsed = time.perf_counter() - outline_start
             _emit("outline", f"Outline ready ({len(outline):,} chars).")
         else:
             outline_errors = validate_outline_structure(outline, expected_days=num_days)
@@ -718,6 +722,7 @@ Do not retell the plot beat-by-beat. Do not comment on style or quality. Facts o
             this_day_recap = ""
             _emit("day", f"Expanding Day {day_number}/{num_days}...")
             day_start = time.perf_counter()
+            day_sections_timing: list[dict[str, Any]] = []
             LOGGER.info(
                 "day pass begin title=%s day=%s/%s outline_chars=%s draft_chars=%s previous_day_chars=%s",
                 title,
@@ -830,6 +835,13 @@ Do not retell the plot beat-by-beat. Do not comment on style or quality. Facts o
                     section_texts.append(section_text.strip())
                     prior_text = self._tail_for_context(section_text, max_chars=max(2500, _section_tail_chars()))
                     section_word_count = len(section_text.split())
+                    section_elapsed = time.perf_counter() - section_start
+                    day_sections_timing.append({
+                        "section": section_index,
+                        "seconds": round(section_elapsed, 1),
+                        "words": section_word_count,
+                        "continuations": max(0, len(section_texts) - section_index),
+                    })
                     LOGGER.info(
                         "section pass end title=%s day=%s section=%s elapsed=%.3fs output_words=%s word_ratio=%.2f",
                         title,
@@ -891,18 +903,34 @@ Do not retell the plot beat-by-beat. Do not comment on style or quality. Facts o
                 sum(len(part.split()) for part in day_stories),
             )
             _emit("day", f"Day {day_number} complete ({len(day_text):,} chars).")
+            day_timings.append({
+                "day": day_number,
+                "seconds": round(time.perf_counter() - day_start, 1),
+                "words": len(day_text.split()),
+                "sections": day_sections_timing,
+            })
         total_words = sum(len(part.split()) for part in day_stories)
         total_target = TARGET_WORDS_PER_DAY * num_days
+        total_elapsed = time.perf_counter() - start_all
         LOGGER.info(
             "multi-pass end title=%s days=%s elapsed=%.3fs output_words=%s target_words=%s word_ratio=%.2f",
             title,
             num_days,
-            time.perf_counter() - start_all,
+            total_elapsed,
             total_words,
             total_target,
             total_words / max(total_target, 1),
         )
-        return "\n\n".join(day_stories)
+        story = "\n\n".join(day_stories)
+        if return_timings:
+            return story, {
+                "total_seconds": round(total_elapsed, 1),
+                "total_words": total_words,
+                "words_per_second": round(total_words / max(total_elapsed, 0.001), 1),
+                "outline": {"seconds": round(outline_elapsed, 1)},
+                "days": day_timings,
+            }
+        return story
 
     def _split_outline_days(self, outline: str) -> dict[int, str]:
         blocks: dict[int, str] = {}

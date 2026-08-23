@@ -9,6 +9,7 @@ by the LLM into a full episode with outline → story → banner → chapter pro
 
 import argparse
 import atexit
+import os
 import signal
 import sys
 import time
@@ -301,7 +302,7 @@ def main(
         last_progress["last_update"] = now
 
     try:
-        story = story_gen.generate_episode_story_multi_pass(
+        story, story_timings = story_gen.generate_episode_story_multi_pass(
             model=model_story,
             title=seed["title"],
             num_days=seed["num_days"],
@@ -317,7 +318,16 @@ def main(
             draft_only=draft_only,
             progress_callback=progress_callback,
             checkpoint_callback=save_day_checkpoint,
+            return_timings=True,
         )
+        print("  ── Story timing breakdown ──")
+        print(f"  total: {story_timings['total_seconds']}s "
+              f"({story_timings['total_words']:,} words, "
+              f"{story_timings['words_per_second']} words/s)")
+        for d in story_timings["days"]:
+            conts = sum(s.get("continuations", 0) for s in d["sections"])
+            print(f"  Day {d['day']}: {d['seconds']}s, {d['words']:,} words, "
+                  f"{len(d['sections'])} sections, {conts} continuations")
     except GenerationCancelled as exc:
         print(f"\n⚠ Generation cancelled: {exc}")
         print(f"  Checkpoint preserved under {storage.base_path / '.checkpoints'}")
@@ -578,6 +588,11 @@ if __name__ == "__main__":
         help=f"Random seed for the creative tables (default: {DEFAULT_SEED_VALUE})",
     )
     parser.add_argument(
+        "--fast", action="store_true", default=False,
+        help="Fast mode: ~40%% of the normal word budget per day "
+             "(GRAVEDANCER_FAST=1). Roughly 2.5x faster story phase.",
+    )
+    parser.add_argument(
         "--model", type=str, default=None,
         help="MLX model to use for generation (default: auto-detect)",
     )
@@ -625,6 +640,8 @@ if __name__ == "__main__":
              "(saved to <episode>/refs/, used as multi-ref anchors in Draw Things).",
     )
     args = parser.parse_args()
+    if args.fast:
+        os.environ.setdefault("GRAVEDANCER_FAST", "1")
     try:
         result = main(
         seed_value=args.seed,
