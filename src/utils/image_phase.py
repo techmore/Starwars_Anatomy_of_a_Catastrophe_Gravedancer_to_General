@@ -16,6 +16,7 @@ the operator can load them as multi-reference anchors in Draw Things.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any
 
@@ -28,6 +29,68 @@ LOGGER = get_logger(__name__)
 
 MODE_DAY = "day"
 MODE_CHAPTER = "chapter"
+
+# ── Style profiles ──────────────────────────────────────────────────────────
+# Each profile wraps scene content in the right trigger + style anchor for the
+# active Draw Things model/LoRA stack. Selected via GRAVEDANCER_STYLE_PROFILE.
+#
+# "Star Wars futurism" guards: without these, fantasy-trained LoRAs drift to
+# swords/castles/medieval looks. Kept short so they survive low step counts.
+_SW_FUTURISM = (
+    "star wars sci-fi futurism, blaster rifles and energy weapons, "
+    "spaceship wrecks, holographic technology, NOT medieval, NOT swords, "
+    "NOT castles, NO knights"
+)
+
+STYLE_PROFILES: dict[str, dict[str, str]] = {
+    # Klein 9B i8x distilled — realistic painterly Star Wars
+    "klein-realistic": {
+        "prefix": f"Painterly Star Wars sci-fi realism, cinematic composition. {_SW_FUTURISM}.",
+        "suffix": "Volumetric light, dramatic atmosphere, NO text, no letters, no typography.",
+    },
+    # Flux.1 schnell + Star Wars Cinematic LoRA — film-grade grading
+    "schnell-cinematic": {
+        "prefix": f"Star wars style, cinematic film still, epic sci-fi realism. {_SW_FUTURISM}.",
+        "suffix": "Cinematic lighting, anamorphic framing, NO text, no letters, no typography.",
+    },
+    # Krea 2 Turbo + Velvet's MythP0rtrait LoRA — mythic fantasy portraiture.
+    # Hero tier: used for cover + day heroes (the big statement shots).
+    "krea2-mythic": {
+        "prefix": f"mythp0rt, epic mythic fantasy portrait, dramatic painterly rendering. {_SW_FUTURISM}.",
+        "suffix": "Moody chiaroscuro lighting, monumental composition, NO text, no letters, no typography.",
+        "tier": "hero",
+    },
+}
+
+# Fast tier for chapter plates: same scene content, lighter styling — rendered
+# on whichever model is active but without hero-tier prompt weight. When a
+# second DT endpoint is configured (GRAVEDANCER_DT_FAST_URL), plates route
+# there instead of occupying the hero engine's queue.
+FAST_PROFILE_NAME = os.environ.get("GRAVEDANCER_STYLE_PROFILE_FAST", "klein-realistic")
+
+
+def active_style_profile() -> dict[str, str]:
+    """Resolve the style profile from env (default: klein-realistic)."""
+    name = os.environ.get("GRAVEDANCER_STYLE_PROFILE", "").strip().lower()
+    return STYLE_PROFILES.get(name, STYLE_PROFILES["klein-realistic"])
+
+
+def wrap_scene_prompt(scene_text: str, tier: str = "hero") -> str:
+    """Wrap a scene description in the style profile for the given tier.
+
+    hero tier  → the active profile (cover + day heroes)
+    fast tier  → FAST_PROFILE_NAME (chapter plates; lighter/faster styling)
+    """
+    profile = (active_style_profile() if tier == "hero"
+               else STYLE_PROFILES.get(FAST_PROFILE_NAME, STYLE_PROFILES["klein-realistic"]))
+    core = scene_text.strip().rstrip(".")
+    # Strip a leading old-style anchor if the stored prompt carries one.
+    for stale in ("Painterly Star Wars sci-fi realism,", "Painterly Star Wars sci-fi realism",
+                  "Star wars style,", "Wide cinematic shot of", "Wide establishing shot of"):
+        if core.lower().startswith(stale.lower()):
+            core = core[len(stale):].strip().lstrip(",").strip()
+            break
+    return f"{profile['prefix']} {core}. {profile['suffix']}"
 
 
 def count_planned_images(
@@ -99,7 +162,7 @@ def load_stored_prompts(storage: EpisodeStorage, episode_id: str) -> dict[tuple[
 
 def _style_anchor() -> str:
     """Style lead — Flux weights early tokens most heavily."""
-    return "Painterly Star Wars sci-fi realism, cinematic composition"
+    return active_style_profile()["prefix"]
 
 
 def build_day_prompt_from_stored(
