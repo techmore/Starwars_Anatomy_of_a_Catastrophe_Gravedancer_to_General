@@ -250,17 +250,29 @@ def generate_episode_images(
     banner_setting = str(metadata.get("setting", "")).split(".")[0]
     jedi = metadata.get("jedi_name", "")
     cover_prompt = (
-        "Book cover art, portrait orientation, painterly Star Wars sci-fi realism. "
-        f"'{title}'. A lone armored hunter-warrior with curved tusks stands in the "
-        f"foreground, seen from behind at low angle, cloak whipping in wind, facing "
+        "Vertical portrait poster illustration, painterly Star Wars sci-fi realism. "
+        "A lone armored hunter-warrior with curved tusks stands in the "
+        "foreground, seen from behind at low angle, cloak whipping in wind, facing "
         + ("a distant robed figure with a cyan lightsaber. " if jedi
            else "a monumental ruined structure. ")
         + f"{banner_setting} below, monumental sky above, dramatic god-rays, "
-        "high-contrast poster composition with strong negative space at the top "
-        "for a title, iconic silhouette, NO text, no letters, no words, no typography."
+        "high-contrast poster composition, iconic silhouette, "
+        "NO text, no letters, no words, no typography."
     )
     cover_w, cover_h = 1024, 1536  # 2:3 book cover
-    _generate("cover", cover_prompt, 0, "banner", cover_w, cover_h)
+    cover_entry = _generate("cover", cover_prompt, 0, "banner", cover_w, cover_h)
+    if cover_entry and os.environ.get(
+            "GRAVEDANCER_COVER_TITLE", "1").strip().lower() not in {"0", "false", "off"}:
+        try:
+            from src.utils.cover_title import overlay_title
+            ep_dir = Path(storage._resolve_episode_dir(episode_id))
+            overlay_title(
+                ep_dir / "images" / "day-00-banner.png",
+                title,
+                subtitle="A Gravedancer to General Episode",
+            )
+        except Exception as exc:
+            LOGGER.warning("cover title overlay failed (non-fatal): %s", exc)
 
     def _emit(msg: str) -> None:
         if progress:
