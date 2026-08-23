@@ -83,8 +83,10 @@ def site_episodes(site_repo: Path) -> dict[str, dict]:
     """Map site episode filename -> parsed frontmatter."""
     out: dict[str, dict] = {}
     ep_dir = site_repo / "episodes"
+    if not (site_repo / "build.py").exists():
+        sys.exit(f"error: {site_repo} does not look like the site repo (no build.py)")
     if not ep_dir.is_dir():
-        sys.exit(f"error: {ep_dir} not found — is {site_repo} the site repo?")
+        return out  # empty archive is valid
     for path in sorted(ep_dir.glob("*.md")):
         text = path.read_text(encoding="utf-8")
         parts = text.split("---", 2)
@@ -287,6 +289,7 @@ def action_publish(args: argparse.Namespace) -> None:
         return
 
     target_path = site_repo / "episodes" / target_name
+    target_path.parent.mkdir(parents=True, exist_ok=True)
     target_path.write_text(rendered, encoding="utf-8")
 
     run_git(site_repo, "pull", "--ff-only")
