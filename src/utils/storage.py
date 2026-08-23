@@ -261,6 +261,34 @@ class EpisodeStorage:
         
         return episode_id
     
+    def mark_pipeline_complete(
+        self,
+        episode_id: str,
+        word_count: int | None = None,
+        num_days: int | None = None,
+    ) -> bool:
+        """Persist a PIPELINE COMPLETE marker into an episode's metadata.
+
+        Written only after the pipeline reaches its final phase; the publish
+        gate (scripts/publish_episode.py) refuses episodes without it.
+        """
+        ep_dir = self._resolve_episode_dir(episode_id)
+        metadata_path = ep_dir / "metadata.json"
+        metadata = self._read_json(metadata_path)
+        if not isinstance(metadata, dict):
+            raise FileNotFoundError(
+                f"cannot mark complete, no readable metadata at {metadata_path}")
+        _normalize_metadata(metadata)
+        metadata["pipeline_complete"] = True
+        metadata["pipeline_completed_at"] = datetime.now().isoformat()
+        if word_count is not None:
+            metadata["word_count"] = word_count
+        if num_days is not None:
+            metadata["num_days"] = num_days
+        metadata["updated_at"] = datetime.now().isoformat()
+        self._atomic_write_json(metadata_path, metadata)
+        return True
+
     def load_episode(self, episode_id: str) -> dict[str, Any] | None:
         """Load episode from storage."""
         LOGGER.info("load_episode start episode_id=%s", episode_id)

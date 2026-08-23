@@ -442,6 +442,19 @@ def main(
             print(f"  Timing manifest: episodes/{episode_id}/timings.json")
         except Exception as exc:
             LOGGER.warning("timings.json write failed (non-fatal): %s", exc)
+
+    # ── Completion marker: persisted proof this run reached the end ──────
+    # The publish gate refuses to publish an episode without it, so a
+    # truncated/interrupted run can never reach the site.
+    try:
+        storage.mark_pipeline_complete(
+            episode_id,
+            word_count=len(story.split()),
+            num_days=seed["num_days"],
+        )
+    except Exception as exc:  # non-fatal: an episode never fails at bookkeeping
+        LOGGER.warning("completion marker write failed (non-fatal): %s", exc)
+
     if resumed is not None and resumed.get("path"):
         storage.delete_checkpoint_file(resumed["path"])
     elif day_drafts:
@@ -583,7 +596,9 @@ def main(
         print(f"  {'TOTAL PIPELINE':<24} {total_elapsed:>10.1f} {total_elapsed / 60:>10.1f}")
     print(f"  Episode ID:    {episode_id}")
     print(f"  Directory:     episodes/{episode_id}/")
-    print(f"{'='*72}\n")
+    print(f"{'='*72}")
+    print(f"\n  Next: python scripts/publish_episode.py episodes/{episode_id} "
+          f"--publish --tagline \"...\"\n")
 
     # The pipeline is intentionally single-workload on unified-memory Macs.
     # Release the active weights before returning control to the UI or shell.
