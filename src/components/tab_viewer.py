@@ -82,6 +82,22 @@ def render_viewer_tab(context):
             st.markdown(f"**Model:** {metadata.get('model', 'N/A')}")
             st.markdown(f"**Generation profile:** {metadata.get('generation_profile', 'legacy / unknown')}")
 
+    timings = metadata.get("timings")
+    if timings:
+        with st.expander("⏱ Generation Timings", expanded=False):
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Total time", f"{timings.get('total_seconds', 0):.0f}s")
+            c2.metric("Words", f"{timings.get('total_words', 0):,}")
+            c3.metric("Speed", f"{timings.get('words_per_second', 0)} w/s")
+            for day in timings.get("days", []):
+                conts = sum(s.get("continuations", 0) for s in day.get("sections", []))
+                st.markdown(
+                    f"**Day {day['day']}** — {day['seconds']}s · "
+                    f"{day['words']:,} words · {len(day.get('sections', []))} sections "
+                    f"· {conts} continuations")
+            if timings.get("outline"):
+                st.caption(f"Outline: {timings['outline'].get('seconds', 0)}s")
+
     st.markdown("---")
 
     edit_mode = st.toggle("Edit Mode", value=False, key="viewer_edit_toggle")

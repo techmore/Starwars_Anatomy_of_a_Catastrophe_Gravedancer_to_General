@@ -15,6 +15,7 @@ import sys
 import time
 import uuid
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 from src.utils.creative_tables import generate_creative_seed
@@ -424,12 +425,23 @@ def main(
     print(f"{'='*72}\n")
 
     save_start = time.perf_counter()
+    if story_timings:
+        metadata["timings"] = story_timings
     episode_id = storage.save_episode(
         title=seed["title"],
         story=story,
         metadata=metadata,
         prompts=prompts_payload,
     )
+    if story_timings:
+        try:
+            import json as _json
+            ep_dir = Path(storage._resolve_episode_dir(episode_id))
+            (ep_dir / "timings.json").write_text(
+                _json.dumps(story_timings, indent=2), encoding="utf-8")
+            print(f"  Timing manifest: episodes/{episode_id}/timings.json")
+        except Exception as exc:
+            LOGGER.warning("timings.json write failed (non-fatal): %s", exc)
     if resumed is not None and resumed.get("path"):
         storage.delete_checkpoint_file(resumed["path"])
     elif day_drafts:
