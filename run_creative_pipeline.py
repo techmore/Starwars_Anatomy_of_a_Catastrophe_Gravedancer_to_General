@@ -533,6 +533,18 @@ def main(
                 if "error" in r:
                     print(f"    FAILED {r['label']}: {r['error']}")
 
+        # Re-export reading formats so the book ships WITH the art. The first
+        # pass ran before any image existed (save happens pre-image-phase).
+        print("\nRe-exporting reading formats with embedded images...")
+        try:
+            written = write_reading_formats(
+                storage, episode_id, story, metadata)
+            for path in written:
+                print(f"  Illustrated export: {path}")
+        except Exception as exc:  # non-fatal
+            LOGGER.warning("illustrated re-export failed error=%s", exc)
+            print(f"  Re-export failed (non-fatal): {exc}")
+
     # ── Series memory: record this episode for future ones ───────────────
     print("\nUpdating series bible...")
     bible_start = time.perf_counter()
