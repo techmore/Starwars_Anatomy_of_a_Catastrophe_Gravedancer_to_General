@@ -27,6 +27,7 @@ import json
 import logging
 import os
 import re
+import shutil
 import sys
 import tempfile
 from pathlib import Path
@@ -209,6 +210,72 @@ def render_episode_md(fm: dict, body: str, source_id: str) -> str:
     return f"---\n{front}\n---\n\n{body}\n\n<!-- gravedancer-pipeline-source: {source_id} -->\n"
 
 
+def install_cover(site_repo: Path, episode_dir: Path, slug: str) -> str | None:
+    """Copy the episode's banner art into the site as assets/img/<slug>/cover.jpg.
+
+    Returns the site-relative frontmatter value, or None when the episode has
+    no generated art. PNG -> JPEG (quality 85, max width 1400) keeps the site
+    repo light; Pages serves it fine either way.
+    """
+    dest = _convert_to_site_img(
+        _pick_cover_source(episode_dir),
+        site_repo / "assets" / "img" / slug / "cover.jpg",
+        slug,
+    )
+    return dest
+
+
+def _pick_cover_source(episode_dir: Path) -> Path | None:
+    images_dir = episode_dir / "images"
+    if images_dir.is_dir():
+        # Banner/cover first, then earliest day plate as fallback.
+        candidates = sorted(images_dir.glob("*banner*.png")) or \
+            sorted(images_dir.glob("day-00-*.png")) or \
+            sorted(images_dir.glob("*.png"))
+        if candidates:
+            return candidates[0]
+    return None
+
+
+def install_day_plates(site_repo: Path, episode_dir: Path, slug: str) -> dict[int, str]:
+    """Copy each day's hero art into the site as assets/img/<slug>/day-NN.jpg.
+
+    Returns {day_number: site-relative path} for frontmatter ``plates:``.
+    """
+    plates: dict[int, str] = {}
+    images_dir = episode_dir / "images"
+    if not images_dir.is_dir():
+        return plates
+    for src in sorted(images_dir.glob("day-*-*-hero.png")):
+        m = re.match(r"day-(\d+)-", src.name)
+        if not m:
+            continue
+        day = int(m.group(1))
+        dest = site_repo / "assets" / "img" / slug / f"day-{day:02d}.jpg"
+        if _convert_to_site_img(src, dest, slug):
+            plates[day] = f"assets/img/{slug}/day-{day:02d}.jpg"
+    return plates
+
+
+def _convert_to_site_img(src: Path | None, dest: Path, slug: str) -> str | None:
+    if src is None:
+        return None
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        from PIL import Image
+        resample = getattr(getattr(Image, "Resampling", Image), "LANCZOS")
+        with Image.open(src) as im:
+            im = im.convert("RGB")
+            if im.width > 1400:
+                ratio = 1400 / im.width
+                im = im.resize((1400, round(im.height * ratio)), resample)
+            im.save(dest, "JPEG", quality=85, optimize=True)
+    except ImportError:
+        shutil.copyfile(src, dest.with_suffix(".png"))
+        return f"assets/img/{slug}/{dest.stem}.png"
+    return f"assets/img/{slug}/{dest.name}"
+
+
 def validate(fm: dict, rendered: str) -> list[str]:
     problems = []
     required = ["title", "episode", "target_jedi", "setting", "status"]
@@ -272,6 +339,13 @@ def action_publish(args: argparse.Namespace) -> None:
     )
 
     target_name = existing or f"{number:02d}-{slugify(fm['title'])}.md"
+    slug = target_name.removesuffix(".md")
+    cover_value = install_cover(site_repo, episode_dir, slug)
+    if cover_value:
+        fm["cover"] = cover_value
+    plates = install_day_plates(site_repo, episode_dir, slug)
+    if plates:
+        fm["plates"] = {day: path for day, path in sorted(plates.items())}
     rendered = render_episode_md(fm, body, source_id)
 
     problems = validate(fm, rendered)
@@ -294,6 +368,9 @@ def action_publish(args: argparse.Namespace) -> None:
 
     run_git(site_repo, "pull", "--ff-only")
     run_git(site_repo, "add", str(target_path.relative_to(site_repo)))
+    cover_site_path = site_repo / "assets" / "img" / slug
+    if cover_site_path.is_dir():
+        run_git(site_repo, "add", str(cover_site_path.relative_to(site_repo)))
     msg = (
         f"{'update' if existing else 'publish'}: EP{number} {fm['title']} "
         f"(from pipeline {source_id})"
