@@ -396,6 +396,102 @@ def to_epub_bytes(title: str, story_md: str, metadata: dict[str, Any] | None = N
     return buf.getvalue()
 
 
+_FONT_DIRS = [
+    "/System/Library/Fonts/Supplemental",
+    "/Library/Fonts",
+]
+
+
+def _find_font(*names: str) -> str | None:
+    """Locate a TTF on disk so Unicode text renders (fpdf2 core fonts are latin-1)."""
+    import os
+    for name in names:
+        for d in _FONT_DIRS:
+            path = os.path.join(d, name)
+            if os.path.exists(path):
+                return path
+    return None
+
+
+def to_pdf_bytes(title: str, story_md: str, metadata: dict[str, Any] | None = None,
+                 cover_image: bytes | None = None) -> bytes:
+    """Build a print-style PDF ebook: cover + title page + one chapter block per day.
+
+    Uses fpdf2 with Georgia when available (falls back to built-in Helvetica for
+    plain-ASCII stories). Returns raw PDF bytes.
+    """
+    from fpdf import FPDF
+
+    meta = metadata or {}
+    pdf = FPDF(format="A4")
+    pdf.set_title(title)
+    pdf.set_author("Gravedancer to General")
+    pdf.set_margins(22, 20, 22)
+    pdf.set_auto_page_break(auto=True, margin=20)
+
+    serif = _find_font("Georgia.ttf", "Times New Roman.ttf")
+    serif_bold = _find_font("Georgia Bold.ttf", "Times New Roman Bold.ttf")
+    serif_italic = _find_font("Georgia Italic.ttf", "Times New Roman Italic.ttf")
+    if serif:
+        pdf.add_font("book", "", serif)
+        pdf.add_font("book", "B", serif_bold or serif)
+        pdf.add_font("book", "I", serif_italic or serif)
+        family = "book"
+    else:
+        family = "Helvetica"
+
+    # ── title page ──
+    pdf.add_page()
+    if cover_image:
+        try:
+            import io
+            pdf.image(io.BytesIO(cover_image), x=22, w=pdf.w - 44)
+        except Exception:
+            pass  # unreadable cover should never fail the export
+    pdf.ln(12)
+    pdf.set_font(family, "B", 26)
+    pdf.multi_cell(0, 12, title, align="C")
+    pdf.ln(2)
+    pdf.set_font(family, "", 11)
+    pdf.multi_cell(0, 6, episode_meta_line(meta), align="C")
+    pdf.ln(6)
+    pdf.set_font(family, "I", 10)
+    pdf.multi_cell(
+        0, 5.5,
+        "Anatomy of a Catastrophe — a Star Wars fan series chronicling "
+        "Qymaen jai Sheelal's evolution into General Grievous.",
+        align="C",
+    )
+
+    def _body(text: str) -> None:
+        pdf.set_font(family, "", 10.5)
+        for para in [p.strip() for p in text.split("\n\n") if p.strip()]:
+            clean = re.sub(r"\s+", " ", para.replace("\n", " "))
+            pdf.multi_cell(0, 5.8, clean)
+            pdf.ln(2.4)
+
+    for section in parse_story_sections(story_md):
+        pdf.add_page()
+        pdf.set_font(family, "B", 17)
+        pdf.multi_cell(0, 9, section.heading)
+        pdf.ln(1.5)
+        pdf.set_draw_color(120, 30, 30)
+        pdf.set_line_width(0.5)
+        pdf.line(pdf.l_margin, pdf.get_y(), pdf.w - pdf.r_margin, pdf.get_y())
+        pdf.ln(5)
+        if section.intro:
+            _body(section.intro)
+        for chapter in section.chapters:
+            if chapter["text"]:
+                pdf.ln(2)
+                pdf.set_font(family, "B", 13)
+                pdf.multi_cell(0, 7, f"Chapter {chapter['number']}: {chapter['title']}")
+                pdf.ln(2.5)
+                _body(chapter["text"])
+
+    return bytes(pdf.output())
+
+
 def _slug(value: str) -> str:
     slug = re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
     return slug or "episode"

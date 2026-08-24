@@ -5,3 +5,4 @@ mlx-optiq
 rich>=14.0.0
 textual>=8.0.0
 ebooklib>=0.20
+fpdf2>=2.8

@@ -20,6 +20,7 @@ from src.utils.export_formats import (
     suggest_file_stem,
     to_epub_bytes,
     to_html,
+    to_pdf_bytes,
     to_plain_text,
 )
 
@@ -111,6 +112,7 @@ def write_reading_formats(
         (f"{stem}.epub", lambda: to_epub_bytes(
             title, story_md, metadata, cover_image=cover,
             images=episode_images)),
+        (f"{stem}.pdf", lambda: to_pdf_bytes(title, story_md, metadata, cover_image=cover)),
     )
     for filename, build in jobs:
         try:

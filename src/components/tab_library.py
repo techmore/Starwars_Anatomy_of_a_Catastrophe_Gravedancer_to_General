@@ -5,7 +5,7 @@ from pathlib import Path
 
 import streamlit as st
 
-from src.utils.export_formats import suggest_file_stem, to_epub_bytes, to_html, to_plain_text
+from src.utils.export_formats import suggest_file_stem, to_epub_bytes, to_html, to_pdf_bytes, to_plain_text
 from src.utils.session_state import (
     build_episode_full_json_export,
     get_episode_prompt_sets,
@@ -166,7 +166,7 @@ def render_library_tab(context):
             meta = episode.get("metadata", {})
 
             st.markdown("#### Reading formats")
-            read_col1, read_col2, read_col3 = st.columns(3)
+            read_col1, read_col2, read_col3, read_col4 = st.columns(4)
             with read_col1:
                 st.download_button(
                     "Download Plain Text (.txt)",
@@ -200,6 +200,23 @@ def render_library_tab(context):
                         file_name=f"{stem}.epub",
                         mime="application/epub+zip",
                         key=f"dl_epub_{ep_id}",
+                    )
+            with read_col4:
+                try:
+                    pdf_bytes = to_pdf_bytes(
+                        meta.get("title", "Episode"), story_md, meta,
+                        cover_image=cover,
+                    )
+                except Exception as exc:
+                    st.error(f"PDF export failed: {exc}")
+                    pdf_bytes = b""
+                if pdf_bytes:
+                    st.download_button(
+                        "Download Print (.pdf)",
+                        data=pdf_bytes,
+                        file_name=f"{stem}.pdf",
+                        mime="application/pdf",
+                        key=f"dl_pdf_{ep_id}",
                     )
             st.caption("The HTML file prints cleanly to PDF from any browser (File → Print).")
 
