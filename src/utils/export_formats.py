@@ -319,9 +319,14 @@ def to_epub_bytes(title: str, story_md: str, metadata: dict[str, Any] | None = N
     book.add_item(css)
 
     if cover_image:
-        book.set_cover(f"cover.{cover_media_type.split('/')[-1]}", cover_image)
+        slim_cover = _slim_image(cover_image)
+        book.set_cover("cover.jpg", slim_cover or cover_image)
 
+    # Drop the "banner" image when it's identical to the cover — embedding
+    # both doubled the file size for no visual gain.
     sections = parse_story_sections(story_md)
+    if cover_image and images.get("banner") == cover_image:
+        images = {k: v for k, v in images.items() if k != "banner"}
 
     title_content = [
         "<h1>" + html.escape(title) + "</h1>",
@@ -338,15 +343,20 @@ def to_epub_bytes(title: str, story_md: str, metadata: dict[str, Any] | None = N
     toc = [title_page]
 
     def _embed_image(key: str, idx: int) -> tuple[str, Any | None]:
-        """Add an image to the book and return (xhtml img tag, item)."""
-        data = images.get(key)
+        """Add an image to the book and return (xhtml img tag, item).
+
+        Images are re-encoded as sized JPEGs so the ebook stays light
+        (full-res PNG plates made the file 10x heavier than needed).
+        """
+        data = _slim_image((images or {}).get(key))
         if not data:
             return "", None
+        name = f"images/{key}.jpg"
         item = epub.EpubItem(
-            uid=f"img{idx}", file_name=f"images/{key}.png",
-            media_type="image/png", content=data)
+            uid=f"img{idx}", file_name=name,
+            media_type="image/jpeg", content=data)
         book.add_item(item)
-        tag = (f'<figure class="plate"><img src="images/{key}.png" '
+        tag = (f'<figure class="plate"><img src="{name}" '
                f'alt="{html.escape(key)}"/></figure>')
         return tag, item
 
@@ -394,6 +404,27 @@ def to_epub_bytes(title: str, story_md: str, metadata: dict[str, Any] | None = N
     buf = io.BytesIO()
     epub.write_epub(buf, book)
     return buf.getvalue()
+
+
+def _slim_image(data: bytes | None, max_width: int = 1200,
+                quality: int = 80) -> bytes | None:
+    """Re-encode an image as a reasonably sized JPEG for embedding."""
+    if not data:
+        return None
+    import io
+    try:
+        from PIL import Image
+        resample = getattr(getattr(Image, "Resampling", Image), "LANCZOS")
+        with Image.open(io.BytesIO(data)) as im:
+            im = im.convert("RGB")
+            if im.width > max_width:
+                ratio = max_width / im.width
+                im = im.resize((max_width, round(im.height * ratio)), resample)
+            buf = io.BytesIO()
+            im.save(buf, "JPEG", quality=quality, optimize=True)
+            return buf.getvalue()
+    except Exception:
+        return None
 
 
 _FONT_DIRS = [

@@ -276,6 +276,58 @@ def _convert_to_site_img(src: Path | None, dest: Path, slug: str) -> str | None:
     return f"assets/img/{slug}/{dest.name}"
 
 
+def install_downloads(site_repo: Path, episode_dir: Path, slug: str) -> dict[str, str]:
+    """Install ebook downloads into the site as assets/downloads/<slug>/.
+
+    EPUB is copied from the episode's auto-export when present; the PDF is
+    generated fresh from story.md so it always matches what's being published.
+    Returns {format: site-relative path} for frontmatter ``downloads:``.
+    """
+    sys.path.insert(0, str(PIPELINE_ROOT))
+    from src.utils.export_formats import to_pdf_bytes
+    from src.utils.export_hook import _collect_episode_images
+
+    out: dict[str, str] = {}
+    dest_dir = site_repo / "assets" / "downloads" / slug
+    dest_dir.mkdir(parents=True, exist_ok=True)
+
+    # Name-stamp + date-stamp downloads so saved files are self-describing,
+    # e.g. 2026-08-23-forgotten-chain.epub
+    created = str(load_metadata(episode_dir).get("created_at") or "")[:10]
+    date_part = created if re.match(r"\d{4}-\d{2}-\d{2}", created) else \
+        dt.date.today().isoformat()
+    stem = f"{date_part}-{slug}"
+    for stale in dest_dir.glob("episode.*"):
+        stale.unlink()
+
+    epubs = sorted(episode_dir.glob("*.epub"))
+    if epubs:
+        dest = dest_dir / f"{stem}.epub"
+        shutil.copyfile(epubs[0], dest)
+        out["epub"] = f"assets/downloads/{slug}/{dest.name}"
+
+    metadata = load_metadata(episode_dir)
+    story_path = episode_dir / "story.md"
+    cover_src = _pick_cover_source(episode_dir)
+    cover = None
+    if cover_src:
+        try:
+            cover = cover_src.read_bytes()
+        except OSError:
+            cover = None
+    pdf_bytes = to_pdf_bytes(
+        metadata.get("title", "Episode"),
+        story_path.read_text(encoding="utf-8"),
+        metadata,
+        cover_image=cover,
+        images=_collect_episode_images(episode_dir),
+    )
+    pdf_dest = dest_dir / f"{stem}.pdf"
+    pdf_dest.write_bytes(pdf_bytes)
+    out["pdf"] = f"assets/downloads/{slug}/{pdf_dest.name}"
+    return out
+
+
 def validate(fm: dict, rendered: str) -> list[str]:
     problems = []
     required = ["title", "episode", "target_jedi", "setting", "status"]
@@ -346,6 +398,9 @@ def action_publish(args: argparse.Namespace) -> None:
     plates = install_day_plates(site_repo, episode_dir, slug)
     if plates:
         fm["plates"] = {day: path for day, path in sorted(plates.items())}
+    downloads = install_downloads(site_repo, episode_dir, slug)
+    if downloads:
+        fm["downloads"] = downloads
     rendered = render_episode_md(fm, body, source_id)
 
     problems = validate(fm, rendered)
@@ -371,6 +426,9 @@ def action_publish(args: argparse.Namespace) -> None:
     cover_site_path = site_repo / "assets" / "img" / slug
     if cover_site_path.is_dir():
         run_git(site_repo, "add", str(cover_site_path.relative_to(site_repo)))
+    downloads_site_path = site_repo / "assets" / "downloads" / slug
+    if downloads_site_path.is_dir():
+        run_git(site_repo, "add", str(downloads_site_path.relative_to(site_repo)))
     msg = (
         f"{'update' if existing else 'publish'}: EP{number} {fm['title']} "
         f"(from pipeline {source_id})"
