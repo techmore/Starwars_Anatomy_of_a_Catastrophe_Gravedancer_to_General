@@ -90,6 +90,10 @@ def render_library_tab(context):
         filtered = sorted(filtered, key=lambda x: x.get("title", "").lower(), reverse=True)
     
     st.markdown(f"**Showing {len(filtered)} episode(s)**")
+    st.caption(
+        "Episodes marked **Pipeline complete** can ship to the website with: "
+        "`python scripts/publish_episode.py episodes/<episode-dir> --publish --tagline \"...\"`"
+    )
     st.markdown("---")
     
     # Episode grid
@@ -107,6 +111,8 @@ def render_library_tab(context):
                         st.markdown(f"**Days:** {ep.get('num_days', 'N/A')}")
                         st.markdown(f"**Prompt Sets:** {ep.get('prompt_sets', 0)}")
                         st.markdown(f"**Prompt Days:** {ep.get('prompt_days', 0)}")
+                        if ep.get("pipeline_complete"):
+                            st.markdown("**Status:** 🟢 Pipeline complete — ready to publish")
                         st.markdown(f"*Created: {ep.get('created_at', '')[:10]}*")
                         
                         btn_col1, btn_col2, btn_col3 = st.columns(3)

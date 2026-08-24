@@ -496,6 +496,7 @@ class EpisodeStorage:
                         "setting": metadata.get("setting", "Unknown"),
                         "prompt_sets": prompt_summary["prompt_sets"],
                         "prompt_days": prompt_summary["prompt_days"],
+                        "pipeline_complete": bool(metadata.get("pipeline_complete")),
                     })
         LOGGER.info("list_episodes end count=%s base_path=%s", len(episodes), self.base_path)
         return episodes
