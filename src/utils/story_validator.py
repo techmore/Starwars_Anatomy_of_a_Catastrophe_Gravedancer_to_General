@@ -145,4 +145,87 @@ def validate_story(story: str, expected_days: int | None = None) -> dict[str, An
             "copy-paste repetition across days."
         )
 
+    report.update(canon_check(story))
+    report["warnings"].extend(report.get("canon_violations", []))
+
+    fuzzy_dupes = near_duplicate_paragraphs(story)
+    report["near_duplicate_paragraphs"] = fuzzy_dupes
+    if fuzzy_dupes:
+        report["warnings"].append(
+            f"{len(fuzzy_dupes)} paraphrase-duplicated paragraph(s) found — "
+            "likely a generation loop; regenerate the affected section."
+        )
+
     return report
+
+
+# Era-appropriateness checklist. The series is explicitly pre-Clone Wars:
+# no Republic clone army, no Separatist droid armies, and Qymaen has not
+# yet become Grievous. Terms are matched case-insensitively.
+_CANON_TERM_RE = re.compile(
+    r"\b(clone\s+troopers?|the\s+clone\s+wars|separatist[sz]?m?|"
+    r"confederacy\s+of\s+independent\s+systems|general\s+grievous|"
+    r"count\s+dooku)\b",
+    re.IGNORECASE,
+)
+# Qymaen must never wield a lightsaber; Jedi targets may.
+_QYMAEN_SABER_RE = re.compile(
+    r"(?:qymaen|gravedancer)[^.!?]{0,80}?\blightsaber\b|"
+    r"\blightsaber\b[^.!?]{0,80}?(?:qymaen|his own lightsaber)",
+    re.IGNORECASE,
+)
+
+
+def canon_check(story: str) -> dict[str, Any]:
+    """Scan for anachronisms against the series' pre-Clone Wars premise.
+
+    Returns {"canon_violations": [str, ...]} — human-readable warnings, also
+    mirrored into the report's warning list by validate_story().
+    """
+    violations: list[str] = []
+    text = str(story or "")
+    for m in _CANON_TERM_RE.finditer(text):
+        line_no = text.count("\n", 0, m.start()) + 1
+        violations.append(
+            f"canon: era-inappropriate term '{m.group(0)}' near line {line_no} "
+            "(series is pre-Clone Wars)"
+        )
+    for m in _QYMAEN_SABER_RE.finditer(text):
+        line_no = text.count("\n", 0, m.start()) + 1
+        violations.append(
+            f"canon: Qymaen appears to wield a lightsaber near line {line_no} "
+            "(he fights with rifle/blade until his cybernetic era)"
+        )
+    return {"canon_violations": violations}
+
+
+def near_duplicate_paragraphs(story: str, min_words: int = 35,
+                              overlap: float = 0.7) -> list[str]:
+    """Detect paragraphs that paraphrase-repeat (not exact matches).
+
+    Two long paragraphs whose 8-word shingle sets overlap beyond ``overlap``
+    are considered a generation loop even when wording drifts slightly.
+    """
+    paragraphs = [
+        p.strip() for p in re.split(r"\n\s*\n", str(story or ""))
+        if len(p.strip().split()) >= min_words
+    ]
+    shingles = []
+    for p in paragraphs:
+        words = re.sub(r"\s+", " ", p.lower()).split()
+        shingles.append({tuple(words[i:i + 8]) for i in range(len(words) - 7)})
+    flagged: list[str] = []
+    reported: set[int] = set()
+    for i in range(len(paragraphs)):
+        if i in reported or not shingles[i]:
+            continue
+        for j in range(i + 1, len(paragraphs)):
+            if j in reported or not shingles[j]:
+                continue
+            inter = len(shingles[i] & shingles[j])
+            smaller = min(len(shingles[i]), len(shingles[j]))
+            if smaller and inter / smaller > overlap:
+                flagged.append(paragraphs[j][:120])
+                reported.add(j)
+                break
+    return flagged

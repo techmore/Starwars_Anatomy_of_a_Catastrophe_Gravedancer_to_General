@@ -424,7 +424,33 @@ def main(
     print("  PHASE 6: SAVING EPISODE")
     print(f"{'='*72}\n")
 
+    # Quality gate: dedup recovery + validation report. Never blocks the
+    # run, but a bad report is printed loudly and stored in metadata so the
+    # publish decision is made with eyes open.
+    from src.utils.story_validator import deduplicate_story, validate_story
+
     save_start = time.perf_counter()
+    story, cleanup = deduplicate_story(story)
+    if cleanup.get("removed_paragraphs") or cleanup.get("removed_sentence_starts"):
+        print(f"  Dedup recovery: removed {cleanup['removed_paragraphs']} "
+              f"duplicate paragraph(s), {cleanup['removed_sentence_starts']} "
+              "repeated sentence start(s).")
+    quality_report = validate_story(story, expected_days=seed["num_days"])
+    metadata["quality_report"] = {
+        k: v for k, v in quality_report.items()
+        if k in ("warnings", "word_count", "num_days_found",
+                 "duplicate_paragraphs", "near_duplicate_paragraphs",
+                 "canon_violations")
+        and v
+    }
+    if quality_report["warnings"]:
+        print(f"\n  ⚠ QUALITY REPORT — {len(quality_report['warnings'])} warning(s):")
+        for w in quality_report["warnings"][:12]:
+            print(f"    - {w}")
+        if len(quality_report["warnings"]) > 12:
+            print(f"    - … and {len(quality_report['warnings']) - 12} more")
+        print("  Review before publishing; the report is saved in metadata.json.\n")
+
     if story_timings:
         metadata["timings"] = story_timings
     episode_id = storage.save_episode(

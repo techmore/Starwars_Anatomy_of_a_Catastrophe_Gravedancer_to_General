@@ -1,7 +1,12 @@
 import unittest
 
 from src.utils.prompt_schema import TARGET_WORDS_PER_DAY
-from src.utils.story_validator import deduplicate_story, strip_saved_episode_header, validate_story
+from src.utils.story_validator import (
+    deduplicate_story,
+    near_duplicate_paragraphs,
+    strip_saved_episode_header,
+    validate_story,
+)
 
 
 class TestStoryValidator(unittest.TestCase):
@@ -43,3 +48,56 @@ class TestStoryValidator(unittest.TestCase):
 
         self.assertIn("Story is empty.", report["warnings"])
         self.assertEqual(report["num_days_found"], 0)
+
+
+class CanonCheckTests(unittest.TestCase):
+    """Era guard: the series is explicitly pre-Clone Wars."""
+
+    def test_flags_clone_troopers_and_separatists(self):
+        story = ("## DAY 1: Ash\n\nA squad of clone troopers held the line "
+                 "while the Separatist fleet burned above.")
+        report = validate_story(story)
+        canon = [w for w in report["warnings"] if w.startswith("canon:")]
+        self.assertEqual(len(canon), 2)
+        self.assertTrue(any("clone troopers" in w for w in canon))
+
+    def test_flags_qymaen_wielding_a_lightsaber(self):
+        story = "## DAY 1: Ash\n\nQymaen ignited his lightsaber and strode into the fray."
+        report = validate_story(story)
+        self.assertTrue(any("lightsaber" in w for w in report["warnings"]))
+
+    def test_allows_jedi_lightsabers_and_clean_prose(self):
+        story = ("## DAY 1: Ash\n\nThe Jedi ignited her lightsaber. "
+                 "Qymaen worked the rifle's bolt and answered with lead.")
+        report = validate_story(story, expected_days=1)
+        self.assertFalse([w for w in report["warnings"] if w.startswith("canon:")])
+
+
+class NearDuplicateParagraphTests(unittest.TestCase):
+    """Paraphrase-loop detection (the Forgotten Chain ending failure mode)."""
+
+    BASE = ("In the silence of space, Qymaen found himself reflecting on the "
+            "nature of his own existence and the choices he had made along "
+            "the long path of war that had brought him to this distant and "
+            "quiet place above the world of his birth.")
+
+    def test_exact_repeat_flagged_by_validate(self):
+        story = f"## DAY 1: Ash\n\n{self.BASE}\n\n{self.BASE}"
+        report = validate_story(story, expected_days=1)
+        # Exact repeats are caught by the existing paragraph check…
+        self.assertTrue(any("duplicated paragraph" in w for w in report["warnings"]))
+
+    def test_paraphrased_repeat_caught_by_shingle_overlap(self):
+        # A real generation loop drifts by a word or two, not a full rewrite.
+        variant = ("In the silence of space, Qymaen found himself reflecting "
+                   "on the nature of his own existence and the choices he had "
+                   "made along the long path of war that had carried him to "
+                   "this distant and quiet place above the world of his birth.")
+        flagged = near_duplicate_paragraphs(f"{self.BASE}\n\n{variant}")
+        self.assertEqual(len(flagged), 1)
+
+    def test_distinct_paragraphs_not_flagged(self):
+        other = ("The market at dawn smelled of wet stone and frying grain. "
+                 "Vendors called prices across the square while children "
+                 "chased a wheel rim down the gutter between the stalls.")
+        self.assertEqual(near_duplicate_paragraphs(f"{self.BASE}\n\n{other}"), [])
