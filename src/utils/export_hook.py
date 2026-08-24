@@ -112,7 +112,9 @@ def write_reading_formats(
         (f"{stem}.epub", lambda: to_epub_bytes(
             title, story_md, metadata, cover_image=cover,
             images=episode_images)),
-        (f"{stem}.pdf", lambda: to_pdf_bytes(title, story_md, metadata, cover_image=cover)),
+        (f"{stem}.pdf", lambda: to_pdf_bytes(
+            title, story_md, metadata, cover_image=cover,
+            images=episode_images)),
     )
     for filename, build in jobs:
         try:

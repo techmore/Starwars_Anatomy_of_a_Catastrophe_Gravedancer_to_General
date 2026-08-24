@@ -414,9 +414,12 @@ def _find_font(*names: str) -> str | None:
 
 
 def to_pdf_bytes(title: str, story_md: str, metadata: dict[str, Any] | None = None,
-                 cover_image: bytes | None = None) -> bytes:
+                 cover_image: bytes | None = None,
+                 images: dict[str, bytes] | None = None) -> bytes:
     """Build a print-style PDF ebook: cover + title page + one chapter block per day.
 
+    ``images`` uses the same keys as :func:`to_epub_bytes` ("banner",
+    "day-N", "day-N-chM"); matching plates are embedded at their positions.
     Uses fpdf2 with Georgia when available (falls back to built-in Helvetica for
     plain-ASCII stories). Returns raw PDF bytes.
     """
@@ -441,13 +444,32 @@ def to_pdf_bytes(title: str, story_md: str, metadata: dict[str, Any] | None = No
         family = "Helvetica"
 
     # ── title page ──
-    pdf.add_page()
+    def _plate_jpeg(data: bytes) -> bytes | None:
+        """Re-encode an image as a reasonably sized JPEG for embedding."""
+        import io
+        try:
+            from PIL import Image as _Image
+            resample = getattr(getattr(_Image, "Resampling", _Image), "LANCZOS")
+            with _Image.open(io.BytesIO(data)) as im:
+                im = im.convert("RGB")
+                if im.width > 1200:
+                    ratio = 1200 / im.width
+                    im = im.resize((1200, round(im.height * ratio)), resample)
+                buf = io.BytesIO()
+                im.save(buf, "JPEG", quality=80, optimize=True)
+                return buf.getvalue()
+        except Exception:
+            return None
+
+    if cover_image:
+        cover_image = _plate_jpeg(cover_image)
     if cover_image:
         try:
             import io
             pdf.image(io.BytesIO(cover_image), x=22, w=pdf.w - 44)
         except Exception:
             pass  # unreadable cover should never fail the export
+    pdf.add_page()
     pdf.ln(12)
     pdf.set_font(family, "B", 26)
     pdf.multi_cell(0, 12, title, align="C")
@@ -462,6 +484,48 @@ def to_pdf_bytes(title: str, story_md: str, metadata: dict[str, Any] | None = No
         "Qymaen jai Sheelal's evolution into General Grievous.",
         align="C",
     )
+
+    def _plate_jpeg(data: bytes) -> bytes | None:
+        """Re-encode a plate as a reasonably sized JPEG for embedding."""
+        import io
+        try:
+            from PIL import Image as _Image
+            resample = getattr(getattr(_Image, "Resampling", _Image), "LANCZOS")
+            with _Image.open(io.BytesIO(data)) as im:
+                im = im.convert("RGB")
+                if im.width > 1200:
+                    ratio = 1200 / im.width
+                    im = im.resize((1200, round(im.height * ratio)), resample)
+                buf = io.BytesIO()
+                im.save(buf, "JPEG", quality=80, optimize=True)
+                return buf.getvalue()
+        except Exception:
+            return None
+
+    def _place_image(key: str) -> None:
+        """Embed a plate at full text width, page-breaking first if needed."""
+        data = (images or {}).get(key)
+        if not data:
+            return
+        data = _plate_jpeg(data)
+        if data is None:
+            return
+        import io
+        usable_w = pdf.w - pdf.l_margin - pdf.r_margin
+        try:
+            from PIL import Image as _Image
+            with _Image.open(io.BytesIO(data)) as probe:
+                ratio = probe.height / probe.width
+        except Exception:
+            return  # unreadable plate should never fail the export
+        h = usable_w * ratio
+        if h <= 0 or pdf.get_y() + h > pdf.page_break_trigger:
+            pdf.add_page()
+        try:
+            pdf.image(io.BytesIO(data), w=usable_w)
+            pdf.ln(4)
+        except Exception:
+            pass
 
     def _body(text: str) -> None:
         pdf.set_font(family, "", 10.5)
@@ -479,11 +543,13 @@ def to_pdf_bytes(title: str, story_md: str, metadata: dict[str, Any] | None = No
         pdf.set_line_width(0.5)
         pdf.line(pdf.l_margin, pdf.get_y(), pdf.w - pdf.r_margin, pdf.get_y())
         pdf.ln(5)
+        _place_image(f"day-{section.number}")
         if section.intro:
             _body(section.intro)
         for chapter in section.chapters:
             if chapter["text"]:
                 pdf.ln(2)
+                _place_image(f"day-{section.number}-ch{chapter['number']}")
                 pdf.set_font(family, "B", 13)
                 pdf.multi_cell(0, 7, f"Chapter {chapter['number']}: {chapter['title']}")
                 pdf.ln(2.5)
