@@ -3,6 +3,7 @@
 import json
 import unittest
 from pathlib import Path
+from unittest.mock import Mock, patch
 
 from tui import RunProgress, _progress_bar
 
@@ -126,6 +127,38 @@ class TestRunRowLabels(unittest.TestCase):
         # Labels are Text objects, so "[   12s]" must not be parsed as markup.
         text = self._label_text(self._record("stopped"))
         self.assertRegex(str(text), r"\[\s*\d+s\]")
+
+
+class TestRunCancellation(unittest.TestCase):
+    def test_stop_marks_server_startup_for_cancellation(self):
+        from tui import GravedancerTUI, RunRecord
+
+        app = object.__new__(GravedancerTUI)
+        server = Mock()
+        server.poll.return_value = None
+        server.pid = 123
+        record = RunRecord(
+            run_id="run-1",
+            label="local · rapid-mlx · qwen · s42",
+            local=True,
+            seed=42,
+            started=0.0,
+            server_proc=server,
+        )
+        app.runs = {record.run_id: record}
+        app._stop_requested = {record.run_id: False}
+        app._schedule_local_kill = Mock()
+        app._schedule_remote_kill = Mock()
+
+        with patch("tui.os.getpgid", return_value=123), patch(
+            "tui.os.killpg", side_effect=ProcessLookupError
+        ):
+            app._stop_run(record.run_id)
+
+        self.assertEqual(record.status, "stopping")
+        self.assertTrue(app._stop_requested[record.run_id])
+        server.terminate.assert_called_once_with()
+        app._schedule_local_kill.assert_not_called()
 
 
 class TestStageModelEnv(unittest.TestCase):

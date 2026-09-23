@@ -16,6 +16,32 @@ from src.utils.mlx_client import (
 
 
 class TestChatTemplate(unittest.TestCase):
+    def test_openai_stream_retries_when_content_is_only_think_markup(self):
+        client = MLXClient("nous:test")
+
+        class Response:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return None
+
+            def __iter__(self):
+                yield b'data: {"choices":[{"delta":{"content":"<think>hidden</think>"}}]}\n'
+                yield b"data: [DONE]\n"
+
+        with patch(
+            "src.utils.mlx_client.urllib.request.urlopen",
+            return_value=Response(),
+        ) as opened:
+            with self.assertRaisesRegex(RuntimeError, "reasoning only"):
+                list(client._generate_openai_http_stream(
+                    "http://example.test", "key", "model", "prompt",
+                    None, 0.0, 1.0, 10,
+                ))
+
+        self.assertEqual(opened.call_count, 2)
+
     def test_lmstudio_health_reports_unavailable_server(self):
         client = MLXClient("lmstudio:ornith-1.5-9b")
         with patch("src.utils.mlx_client.urllib.request.urlopen", side_effect=ConnectionRefusedError(61, "refused")):

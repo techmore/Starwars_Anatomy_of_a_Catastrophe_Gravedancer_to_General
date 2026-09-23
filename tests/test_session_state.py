@@ -31,6 +31,7 @@ from src.utils.session_state import (
     clear_current_episode,
     clear_story_inputs,
     episode_selector_label,
+    get_episode_banner_prompt,
     get_episode_day_prompt_sets,
     get_episode_prompt_sets,
     get_episode_target_jedi_name,
@@ -471,6 +472,18 @@ class TestSessionStateHelpers(unittest.TestCase):
         self.assertEqual(len(prompt_sets), 2)
         self.assertEqual(prompt_sets[0]["day"], 1)
         self.assertEqual(get_episode_prompt_sets({}), [])
+
+    def test_get_episode_prompt_sets_falls_back_to_structured_chapters(self):
+        episode = {
+            "prompts": {
+                "banner": {"prompt": "A ruined temple at dusk."},
+                "chapters": [{"day": 2, "chapter_index": 1, "wide": "Temple"}],
+                "scenes": [],
+            }
+        }
+
+        self.assertEqual(get_episode_prompt_sets(episode)[0]["day"], 2)
+        self.assertEqual(get_episode_banner_prompt(episode), "A ruined temple at dusk.")
 
     def test_get_episode_day_prompt_sets_filters_by_day(self):
         episode = {"prompts": {"scenes": [{"day": 1}, {"day": 2}, {"day": 1}]}}

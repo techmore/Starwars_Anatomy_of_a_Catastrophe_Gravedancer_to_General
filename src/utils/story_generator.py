@@ -794,6 +794,7 @@ Do not retell the plot beat-by-beat. Do not comment on style or quality. Facts o
                     # they reach a sane fraction of target or attempts run out.
                     min_words = int(section_word_target * SECTION_MIN_WORD_RATIO)
                     current_words = len(section_text.split())
+                    continuation_count = 0
                     for attempt in range(1, SECTION_CONTINUE_ATTEMPTS + 1):
                         if current_words >= min_words:
                             break
@@ -832,6 +833,7 @@ Do not retell the plot beat-by-beat. Do not comment on style or quality. Facts o
                             break
                         section_text = f"{section_text.rstrip()}\n\n{addition}"
                         current_words = len(section_text.split())
+                        continuation_count += 1
                     section_texts.append(section_text.strip())
                     prior_text = self._tail_for_context(section_text, max_chars=max(2500, _section_tail_chars()))
                     section_word_count = len(section_text.split())
@@ -840,7 +842,7 @@ Do not retell the plot beat-by-beat. Do not comment on style or quality. Facts o
                         "section": section_index,
                         "seconds": round(section_elapsed, 1),
                         "words": section_word_count,
-                        "continuations": max(0, len(section_texts) - section_index),
+                        "continuations": continuation_count,
                     })
                     LOGGER.info(
                         "section pass end title=%s day=%s section=%s elapsed=%.3fs output_words=%s word_ratio=%.2f",

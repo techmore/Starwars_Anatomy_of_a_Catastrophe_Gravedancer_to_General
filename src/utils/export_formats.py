@@ -414,7 +414,7 @@ def _slim_image(data: bytes | None, max_width: int = 1200,
     import io
     try:
         from PIL import Image
-        resample = getattr(getattr(Image, "Resampling", Image), "LANCZOS")
+        resample = getattr(Image, "Resampling", Image).LANCZOS
         with Image.open(io.BytesIO(data)) as im:
             im = im.convert("RGB")
             if im.width > max_width:
@@ -480,7 +480,7 @@ def to_pdf_bytes(title: str, story_md: str, metadata: dict[str, Any] | None = No
         import io
         try:
             from PIL import Image as _Image
-            resample = getattr(getattr(_Image, "Resampling", _Image), "LANCZOS")
+            resample = getattr(_Image, "Resampling", _Image).LANCZOS
             with _Image.open(io.BytesIO(data)) as im:
                 im = im.convert("RGB")
                 if im.width > 1200:
@@ -521,7 +521,7 @@ def to_pdf_bytes(title: str, story_md: str, metadata: dict[str, Any] | None = No
         import io
         try:
             from PIL import Image as _Image
-            resample = getattr(getattr(_Image, "Resampling", _Image), "LANCZOS")
+            resample = getattr(_Image, "Resampling", _Image).LANCZOS
             with _Image.open(io.BytesIO(data)) as im:
                 im = im.convert("RGB")
                 if im.width > 1200:

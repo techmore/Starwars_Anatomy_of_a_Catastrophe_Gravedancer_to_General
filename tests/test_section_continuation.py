@@ -45,7 +45,7 @@ class TestSectionContinuation(unittest.TestCase):
         short = "One terse paragraph."
         story_gen, ollama, calls = self._make_gen([short])
         with patch.object(story_generator_module, "_story_so_far_enabled", return_value=False):
-            story = story_gen.generate_episode_story_multi_pass(
+            story, timings = story_gen.generate_episode_story_multi_pass(
                 model="m",
                 title="T",
                 num_days=1,
@@ -54,6 +54,7 @@ class TestSectionContinuation(unittest.TestCase):
                 tone_focus=["dread"],
                 additional_instructions="",
                 outline=OUTLINE,
+                return_timings=True,
             )
         prompts = [c["prompt"] for c in calls]
         cont_prompts = [p for p in prompts if "stopped too early" in p]
@@ -61,6 +62,7 @@ class TestSectionContinuation(unittest.TestCase):
         self.assertIn(short.strip(), cont_prompts[0])
         self.assertIn("## DAY 1:", story)
         self.assertIn("Continuation prose.", story)
+        self.assertEqual(timings["days"][0]["sections"][0]["continuations"], 1)
 
     def test_long_enough_section_skips_continuation(self):
         # Build a response that already exceeds min ratio of target.

@@ -379,7 +379,7 @@ def _batch_generate_chapters(st, prompt_gen, storage, chapters, selected_id, mod
 def _batch_render_all(st, dt_client, storage, episode, selected_id, aspect_ratio, steps, cfg):
     st.session_state["log_run_path"] = str(start_new_run_log("batch-render"))
     prompts = episode.get("prompts") or {}
-    banner = (prompts.get("banner") or {}).get("banner_prompt", "")
+    banner = get_episode_banner_prompt(episode)
     chapters = prompts.get("chapters") or []
     total = (1 if banner else 0) + len(chapters)
     if total == 0:

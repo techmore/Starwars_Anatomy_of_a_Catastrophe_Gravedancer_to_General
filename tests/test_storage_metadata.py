@@ -5,10 +5,23 @@ import unittest
 import zipfile
 from pathlib import Path
 
-from src.utils.storage import EpisodeStorage
+from src.utils.storage import EpisodeStorage, _summarize_prompts
 
 
 class TestEpisodeStorageMetadata(unittest.TestCase):
+    def test_structured_chapter_prompts_have_archive_coverage(self):
+        summary = _summarize_prompts({
+            "banner": {"prompt": "banner"},
+            "chapters": [
+                {"day": 1, "chapter_index": 1},
+                {"day": 1, "chapter_index": 2},
+                {"day": 3, "chapter_index": 1},
+            ],
+            "scenes": [],
+        })
+
+        self.assertEqual(summary, {"prompt_sets": 3, "prompt_days": 2})
+
     def test_checkpoint_is_atomic_and_separate_from_episode_library(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             storage = EpisodeStorage(tmpdir)

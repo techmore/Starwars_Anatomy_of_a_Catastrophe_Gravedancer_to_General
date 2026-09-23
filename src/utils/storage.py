@@ -13,6 +13,7 @@ from typing import Any
 from uuid import uuid4
 
 from src.utils.logging_utils import get_logger, log_timing
+from src.utils.prompt_payload import prompt_sets_from_payload
 
 
 def _target_jedi_name(metadata: dict[str, Any]) -> str:
@@ -34,13 +35,11 @@ def _sha256_text(value: str) -> str:
 
 def _summarize_prompts(prompts: dict[str, Any] | None) -> dict[str, int]:
     """Count prompt sets and covered days from a stored prompt payload."""
-    scenes = prompts.get("scenes", []) if isinstance(prompts, dict) else []
-    if not isinstance(scenes, list):
-        scenes = []
-    prompt_sets = len(scenes)
+    prompt_sets_list = prompt_sets_from_payload(prompts)
+    prompt_sets = len(prompt_sets_list)
     prompt_days = len({
         p.get("day")
-        for p in scenes
+        for p in prompt_sets_list
         if isinstance(p, dict) and isinstance(p.get("day"), int) and p.get("day") > 0
     })
     return {"prompt_sets": prompt_sets, "prompt_days": prompt_days}

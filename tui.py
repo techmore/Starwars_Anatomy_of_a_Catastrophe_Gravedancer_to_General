@@ -1542,6 +1542,8 @@ class GravedancerTUI(App):
             self._spawn_pipeline(record, spec)
 
     def _spawn_pipeline(self, record: RunRecord, spec: dict[str, Any]) -> None:
+        if self._finish_cancelled_startup(record):
+            return
         proc = subprocess.Popen(
             spec["command"],
             stdout=subprocess.PIPE,
@@ -1554,7 +1556,38 @@ class GravedancerTUI(App):
         )
         record.popen = proc
         record.started = time.perf_counter()
+        if self._stop_requested.get(record.run_id):
+            self._terminate_process(proc)
         self._stream_worker(record)
+
+    @staticmethod
+    def _terminate_process(proc: subprocess.Popen) -> None:
+        """Terminate a process group, falling back to the process itself."""
+        try:
+            if proc.poll() is not None:
+                return
+        except (AttributeError, OSError):
+            pass
+        try:
+            os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+        except (OSError, ProcessLookupError):
+            try:
+                proc.terminate()
+            except OSError:
+                pass
+
+    def _finish_cancelled_startup(self, record: RunRecord) -> bool:
+        """Stop a run that was cancelled before its pipeline subprocess existed."""
+        if not self._stop_requested.get(record.run_id):
+            return False
+        if record.ended is not None:
+            return True
+        if record.server_proc is not None:
+            self._terminate_process(record.server_proc)
+            record.server_proc = None
+        record.ended = time.perf_counter()
+        self.post_message(RunDone(record.run_id, -1))
+        return True
 
     @work(thread=True)
     def _launch_worker(self, record: RunRecord, spec: dict[str, Any]) -> None:
@@ -1572,6 +1605,8 @@ class GravedancerTUI(App):
         def log(text: str) -> None:
             self.call_from_thread(self._log, text)
 
+        if self._finish_cancelled_startup(record):
+            return
         if server_serves(base, real_model):
             log(f"[server] {harness.name} already serving {real_model} at {base}")
             self.call_from_thread(self._spawn_pipeline, record, spec)
@@ -1615,11 +1650,15 @@ class GravedancerTUI(App):
 
         deadline = time.time() + 300
         while time.time() < deadline:
+            if self._finish_cancelled_startup(record):
+                return
             if server_serves(base, real_model):
                 log(f"[server] ✓ {real_model} ready at {base}")
                 self.call_from_thread(self._spawn_pipeline, record, spec)
                 return
-            time.sleep(3)
+            time.sleep(1)
+        if self._finish_cancelled_startup(record):
+            return
         record.status = "error"
         record.ended = time.perf_counter()
         record.error_tail = f"server on :{port} not ready after 300s"
@@ -1758,18 +1797,18 @@ class GravedancerTUI(App):
 
     def _stop_run(self, run_id: str) -> None:
         record = self.runs.get(run_id)
-        if record is None or record.popen is None:
+        if record is None or record.status not in ("running", "stopping"):
             return
         record.status = "stopping"
         self._stop_requested[run_id] = True
         proc = record.popen
-        try:
-            os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
-        except (OSError, ProcessLookupError):
-            try:
-                proc.terminate()
-            except OSError:
-                pass
+        if proc is None:
+            # The server-loading phase has no pipeline Popen yet.  Leave the
+            # worker to post RunDone, but terminate a spawned server promptly.
+            if record.server_proc is not None:
+                self._terminate_process(record.server_proc)
+            return
+        self._terminate_process(proc)
         if record.local:
             self._schedule_local_kill(record)
         else:

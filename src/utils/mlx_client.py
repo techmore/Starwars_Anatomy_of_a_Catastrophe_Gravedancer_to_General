@@ -506,8 +506,10 @@ class MLXClient:
                         # treating it as content poisons structured outputs.
                         text = delta.get("content")
                         if text:
-                            got_content = True
-                            buffered.append(_strip_think_blocks(str(text)))
+                            visible = _strip_think_blocks(str(text))
+                            if visible:
+                                got_content = True
+                                buffered.append(visible)
             except (urllib.error.URLError, TimeoutError, OSError) as exc:
                 last_error = exc
                 LOGGER.warning("%s stream stalled/failed (attempt %s/%s): %s",

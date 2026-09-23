@@ -7,6 +7,7 @@ from src.prompts.system_prompts import (
     STORY_GENERATION_SYSTEM_PROMPT,
     VISUAL_PROMPT_SYSTEM_PROMPT,
 )
+from src.utils.prompt_payload import banner_prompt_from_payload, prompt_sets_from_payload
 from src.utils.settings import SETTINGS
 
 SESSION_DEFAULTS = {
@@ -231,10 +232,9 @@ def save_day_prompt_sets(storage, episode_id, existing_prompts: list, day_num: i
 
 
 def get_episode_prompt_sets(episode: dict) -> list:
-    """Return the stored scene prompt sets for an episode."""
+    """Return saved visual prompt sets from either supported payload shape."""
     prompts = episode.get("prompts") if episode else None
-    scenes = prompts.get("scenes", []) if isinstance(prompts, dict) else []
-    return [scene for scene in scenes if isinstance(scene, dict)] if isinstance(scenes, list) else []
+    return prompt_sets_from_payload(prompts)
 
 
 def get_episode_day_prompt_sets(episode: dict, day_num: int) -> list:
@@ -351,7 +351,7 @@ def summarize_episode_collection(episodes: list) -> dict:
 def get_episode_banner_prompt(episode: dict) -> str:
     """Return the stored banner prompt for an episode, or empty string."""
     prompts = episode.get("prompts") if episode else None
-    return (prompts.get("banner") or {}).get("banner_prompt", "") if prompts else ""
+    return banner_prompt_from_payload(prompts)
 
 
 def get_episode_chapter_prompts(episode: dict) -> list:

@@ -263,7 +263,7 @@ def _convert_to_site_img(src: Path | None, dest: Path, slug: str) -> str | None:
     dest.parent.mkdir(parents=True, exist_ok=True)
     try:
         from PIL import Image
-        resample = getattr(getattr(Image, "Resampling", Image), "LANCZOS")
+        resample = getattr(Image, "Resampling", Image).LANCZOS
         with Image.open(src) as im:
             im = im.convert("RGB")
             if im.width > 1400:
@@ -297,8 +297,15 @@ def install_downloads(site_repo: Path, episode_dir: Path, slug: str) -> dict[str
     date_part = created if re.match(r"\d{4}-\d{2}-\d{2}", created) else \
         dt.date.today().isoformat()
     stem = f"{date_part}-{slug}"
-    for stale in dest_dir.glob("episode.*"):
-        stale.unlink()
+    # This directory is owned by the publisher.  Remove both the original
+    # unsuffixed names and prior date-stamped exports so republishing does not
+    # leave stale download links in the site tree.
+    for stale in dest_dir.iterdir():
+        if stale.is_file() and (
+            stale.name.startswith("episode.")
+            or stale.suffix.lower() in {".epub", ".pdf"}
+        ):
+            stale.unlink()
 
     epubs = sorted(episode_dir.glob("*.epub"))
     if epubs:
@@ -371,6 +378,10 @@ def action_publish(args: argparse.Namespace) -> None:
         print(f"warning: body is only {words:,} words "
               f"(<{MIN_WORDS:,}) — possibly truncated.", flush=True)
 
+    # Synchronize before numbering or writing anything.  A dry run must stay
+    # read-only, including avoiding a local pull that changes the checkout.
+    if not args.dry_run:
+        run_git(site_repo, "pull", "--ff-only")
     episodes = site_episodes(site_repo)
     source_id = episode_dir.name
     existing = find_existing_source(site_repo, source_id)
@@ -392,20 +403,29 @@ def action_publish(args: argparse.Namespace) -> None:
 
     target_name = existing or f"{number:02d}-{slugify(fm['title'])}.md"
     slug = target_name.removesuffix(".md")
-    cover_value = install_cover(site_repo, episode_dir, slug)
-    if cover_value:
-        fm["cover"] = cover_value
-    plates = install_day_plates(site_repo, episode_dir, slug)
-    if plates:
-        fm["plates"] = {day: path for day, path in sorted(plates.items())}
-    downloads = install_downloads(site_repo, episode_dir, slug)
-    if downloads:
-        fm["downloads"] = downloads
-    rendered = render_episode_md(fm, body, source_id)
+    # Build preview assets in a disposable directory for dry runs.  The
+    # generated frontmatter still shows the paths that a real publish would
+    # produce, without mutating the site checkout.
+    staging_dir = tempfile.TemporaryDirectory(prefix="publish-dry-run-") if args.dry_run else None
+    try:
+        asset_root = Path(staging_dir.name) if staging_dir is not None else site_repo
+        cover_value = install_cover(asset_root, episode_dir, slug)
+        if cover_value:
+            fm["cover"] = cover_value
+        plates = install_day_plates(asset_root, episode_dir, slug)
+        if plates:
+            fm["plates"] = {day: path for day, path in sorted(plates.items())}
+        downloads = install_downloads(asset_root, episode_dir, slug)
+        if downloads:
+            fm["downloads"] = downloads
+        rendered = render_episode_md(fm, body, source_id)
 
-    problems = validate(fm, rendered)
-    if problems:
-        sys.exit("error: validation failed:\n  - " + "\n  - ".join(problems))
+        problems = validate(fm, rendered)
+        if problems:
+            sys.exit("error: validation failed:\n  - " + "\n  - ".join(problems))
+    finally:
+        if staging_dir is not None:
+            staging_dir.cleanup()
 
     verb = "update" if existing else "publish"
     print(f"{verb}: EP{number} \"{fm['title']}\" ({fm['status']}, {words:,} words)")
@@ -421,7 +441,6 @@ def action_publish(args: argparse.Namespace) -> None:
     target_path.parent.mkdir(parents=True, exist_ok=True)
     target_path.write_text(rendered, encoding="utf-8")
 
-    run_git(site_repo, "pull", "--ff-only")
     run_git(site_repo, "add", str(target_path.relative_to(site_repo)))
     cover_site_path = site_repo / "assets" / "img" / slug
     if cover_site_path.is_dir():
