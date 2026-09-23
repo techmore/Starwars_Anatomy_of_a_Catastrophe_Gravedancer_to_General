@@ -20,6 +20,16 @@ MODEL_CATALOG = {
         "story_pull": True,
         "platform": "mac",
     },
+    "mlx-community/gemma-4-26B-A4B-it-OptiQ-4bit": {
+        "display": "Gemma 4 26B A4B OptiQ 4-bit MLX — HEAVY STORY MODEL",
+        "quality": "best",
+        "tier": 0,
+        "strengths": ["High-capacity local prose", "Long-context continuity work"],
+        "ram_gb": "~16-18 plus context/KV cache",
+        "family": "gemma",
+        "story_pull": True,
+        "platform": "mac",
+    },
     "mlx-community/gemma-4-e4b-it-OptiQ-4bit": {
         "display": "Gemma 4 E4B IT OptiQ 4-bit MLX — FAST STORY MODEL",
         "quality": "best",
@@ -228,6 +238,7 @@ MODEL_CATALOG = {
 # MLX variants come first — they're optimized for Apple Silicon Macs
 STORY_RECOMMENDED = [
     "mlx-community/Qwen3.8-27B-OptiQ-4bit",
+    "mlx-community/gemma-4-26B-A4B-it-OptiQ-4bit",
     "mlx-community/gemma-4-e4b-it-OptiQ-4bit",
     "mlx-community/gemma-4-e2b-it-4bit",
     "mlx-community/Qwen3.5-4B-MLX-4bit",
@@ -261,6 +272,11 @@ M1_PRO_32GB_GUIDANCE = {
     "mlx-community/Qwen3.8-27B-OptiQ-4bit": {
         "label": "Primary story model",
         "detail": "Use for outline synthesis, long-form prose, continuity revision, and final editorial passes. Keep one model loaded and bound context deliberately.",
+        "concurrency": "Run MLX alone; close Draw Things during long generations",
+    },
+    "mlx-community/gemma-4-26B-A4B-it-OptiQ-4bit": {
+        "label": "Heavy story model",
+        "detail": "Use for a focused quality comparison against Qwen 3.8. Keep context bounded and run it as the only large MLX workload.",
         "concurrency": "Run MLX alone; close Draw Things during long generations",
     },
     "mlx-community/gemma-4-e4b-it-OptiQ-4bit": {
