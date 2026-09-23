@@ -6,6 +6,8 @@ log.txt
 
 # Local run artifacts
 .models/
+.trial-models/
+trial-runs/
 Images/
 episodes/
 .oxalpha-run/

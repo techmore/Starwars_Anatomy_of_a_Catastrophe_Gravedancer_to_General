@@ -155,6 +155,9 @@ def _pipeline_env(
     daily_target_tokens: int,
 ) -> dict[str, str]:
     """Build a reproducible, offline environment for one pipeline process."""
+    # logging_utils opens its aggregate log during module import, before the
+    # pipeline creates EpisodeStorage. Make the parent available first.
+    trial_storage.mkdir(parents=True, exist_ok=True)
     env = os.environ.copy()
     for key in (
         "GRAVEDANCER_MODEL_OUTLINE",
