@@ -430,6 +430,11 @@ def _parse_args() -> argparse.Namespace:
         help="Run the short timed generation probe but skip full story generation.",
     )
     parser.add_argument(
+        "--skip-smoke",
+        action="store_true",
+        help="Skip the short probe when it has already been completed for these snapshots.",
+    )
+    parser.add_argument(
         "--smoke-max-tokens",
         type=int,
         default=512,
@@ -445,6 +450,8 @@ def _parse_args() -> argparse.Namespace:
         parser.error("--daily-target-tokens must be at least 8000")
     if args.download_only:
         args.download = True
+    if args.smoke_only and args.skip_smoke:
+        parser.error("--smoke-only and --skip-smoke cannot be used together")
     if not 32 <= args.smoke_max_tokens <= 4096:
         parser.error("--smoke-max-tokens must be between 32 and 4096")
     if not args.models:
@@ -487,6 +494,7 @@ def main() -> int:
         "daily_target_tokens": args.daily_target_tokens,
         "smoke_max_tokens": args.smoke_max_tokens,
         "smoke_only": args.smoke_only,
+        "skip_smoke": args.skip_smoke,
         "models": list(args.models),
         "resolved_models": resolved_models,
         "preparation_errors": preparation_errors,
@@ -516,12 +524,14 @@ def main() -> int:
             continue
 
         model_path = Path(model_path_text)
-        smoke = run_smoke_trial(
-            repo_id=repo_id,
-            model_path=model_path,
-            trial_root=trial_root,
-            max_tokens=args.smoke_max_tokens,
-        )
+        smoke = None
+        if not args.skip_smoke:
+            smoke = run_smoke_trial(
+                repo_id=repo_id,
+                model_path=model_path,
+                trial_root=trial_root,
+                max_tokens=args.smoke_max_tokens,
+            )
         result = {"repo_id": repo_id, "smoke": smoke}
         if args.smoke_only:
             result["status"] = smoke["status"]
