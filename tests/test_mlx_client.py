@@ -67,6 +67,66 @@ class TestChatTemplate(unittest.TestCase):
         self.assertTrue(status["available"])
         self.assertTrue(status["model_loaded"])
 
+    def test_ollama_health_reports_loaded_model(self):
+        client = MLXClient("ollama:gemma4:e4b")
+
+        class Response:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return None
+
+            def read(self):
+                return b'{"data":[{"id":"gemma4:e4b"}]}'
+
+        with patch("src.utils.mlx_client.urllib.request.urlopen", return_value=Response()):
+            status = client.check_ollama()
+        self.assertTrue(status["available"])
+        self.assertTrue(status["model_loaded"])
+
+    def test_ollama_generation_uses_openai_compatible_stream(self):
+        client = MLXClient("ollama:gemma4:e4b")
+        captured = {}
+
+        class Response:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return None
+
+            def __iter__(self):
+                return iter([
+                    b'data: {"choices":[{"delta":{"content":"Ash"}}]}\n',
+                    b'data: {"choices":[{"delta":{"content":" and bone"}}]}\n',
+                    b'data: [DONE]\n',
+                ])
+
+        def fake_urlopen(request, timeout):
+            captured["url"] = request.full_url
+            captured["headers"] = dict(request.headers)
+            captured["payload"] = json.loads(request.data)
+            return Response()
+
+        with patch.object(client, "check_ollama", return_value={
+            "available": True, "model_loaded": True, "models": ["gemma4:e4b"], "error": "",
+        }), patch("src.utils.mlx_client.urllib.request.urlopen", side_effect=fake_urlopen):
+            result = list(client.generate_stream("ollama:gemma4:e4b", "prompt", max_tokens=256))
+
+        self.assertEqual(result, ["Ash", " and bone"])
+        self.assertEqual(captured["url"], "http://127.0.0.1:11434/v1/chat/completions")
+        self.assertEqual(captured["payload"]["model"], "gemma4:e4b")
+        self.assertNotIn("Authorization", captured["headers"])
+
+    def test_ollama_generation_fails_fast_when_server_is_down(self):
+        client = MLXClient("ollama:gemma4:e4b")
+        with patch.object(client, "check_ollama", return_value={
+            "available": False, "model_loaded": False, "models": [], "error": "refused",
+        }):
+            with self.assertRaisesRegex(RuntimeError, "Ollama is not running"):
+                list(client.generate_stream("ollama:gemma4:e4b", "prompt"))
+
     def test_lmstudio_generation_fails_fast_when_server_is_down(self):
         client = MLXClient("lmstudio:ornith-1.5-9b")
         with patch.object(client, "check_lmstudio", return_value={"available": False, "model_loaded": False, "models": [], "error": "refused"}):

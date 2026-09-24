@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.0
+
+- Adds a native Ubuntu/Ollama backend for the content-pack workflow while
+  preserving MLX defaults on macOS.
+- Adds explicit `ollama:<model>` routing, health checks, streaming coverage,
+  and source-install guidance for the Swartzit article-unit adapter.
+
 ## 0.1.0
 
 - Adds the optional Swartzit `content-package.v1` adapter for the

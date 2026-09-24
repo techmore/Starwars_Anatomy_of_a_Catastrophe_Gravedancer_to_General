@@ -11,10 +11,10 @@ Linux:
     Linux:  Ollama, and any remote OpenAI-compatible endpoint
             (MLX/rapid-mlx/LM Studio are Apple-only)
 
-Every HTTP harness speaks the same OpenAI-compatible surface, so a single
-``lmstudio:<served-model-id>`` reference works for rapid-mlx, LM Studio, Ollama,
-and a remote server hosted on an Ubuntu box. No MLX or Textual imports live in
-this module so it stays importable on either platform.
+Every HTTP harness speaks the same OpenAI-compatible surface, so the client
+uses ``ollama:<served-model-id>`` for Ollama and ``lmstudio:<served-model-id>``
+for LM Studio, rapid-mlx, or a remote compatible server. No MLX or Textual
+imports live in this module so it stays importable on either platform.
 """
 
 from __future__ import annotations
@@ -358,7 +358,8 @@ def discover_models_across_bases(bases: list[str]) -> list[dict[str, str]]:
 def pipeline_model_ref(harness: Harness, model_id: str) -> str:
     """Return the client-routable model reference for a harness + model."""
     if harness.kind == "openai_http":
-        return f"lmstudio:{model_id}"
+        prefix = "ollama" if harness.id == "ollama" else "lmstudio"
+        return f"{prefix}:{model_id}"
     if harness.kind == "opencode_cli":
         if str(model_id) == OXALPHA_FREE_ALIAS:
             return f"opencode:{resolve_oxalpha_target()}"
@@ -372,5 +373,6 @@ def pipeline_environment(harness: Harness, base: str | None = None) -> dict[str,
     if harness.kind == "openai_http":
         root = resolve_base(harness, base)
         if root:
-            env["GRAVEDANCER_LMSTUDIO_URL"] = f"{root}/v1/chat/completions"
+            variable = "GRAVEDANCER_OLLAMA_URL" if harness.id == "ollama" else "GRAVEDANCER_LMSTUDIO_URL"
+            env[variable] = f"{root}/v1/chat/completions"
     return env

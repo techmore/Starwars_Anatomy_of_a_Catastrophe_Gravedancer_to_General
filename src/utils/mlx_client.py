@@ -28,6 +28,8 @@ BONSAI_REPETITION_CONTEXT = 256
 BONSAI_FREQUENCY_PENALTY = 0.04
 LMSTUDIO_PREFIX = "lmstudio:"
 LMSTUDIO_URL = "http://127.0.0.1:1234/v1/chat/completions"
+OLLAMA_PREFIX = "ollama:"
+OLLAMA_URL = "http://127.0.0.1:11434/v1/chat/completions"
 # Cap for the reasoning-exhaustion auto-retry (budget doubles per attempt).
 OPENAI_REASONING_RETRY_MAX_TOKENS = int(os.environ.get(
     "GRAVEDANCER_REASONING_RETRY_MAX_TOKENS", "36000"))
@@ -54,6 +56,16 @@ def lmstudio_api_url() -> str:
 def lmstudio_base_url() -> str:
     """Return the server root used for the lightweight health check."""
     return lmstudio_api_url().rsplit("/v1/", 1)[0]
+
+
+def ollama_api_url() -> str:
+    """Return the configured OpenAI-compatible Ollama chat endpoint."""
+    return os.environ.get("GRAVEDANCER_OLLAMA_URL", OLLAMA_URL).strip() or OLLAMA_URL
+
+
+def ollama_base_url() -> str:
+    """Return the Ollama server root used for health checks."""
+    return ollama_api_url().rsplit("/v1/", 1)[0]
 
 
 def _lmstudio_max_tokens() -> int:
@@ -267,6 +279,10 @@ class MLXClient:
         return str(model).startswith(LMSTUDIO_PREFIX)
 
     @staticmethod
+    def _is_ollama_model(model: str) -> bool:
+        return str(model).startswith(OLLAMA_PREFIX)
+
+    @staticmethod
     def _is_opencode_model(model: str) -> bool:
         return str(model).startswith(OPENCODE_PREFIX)
 
@@ -372,6 +388,10 @@ class MLXClient:
         return str(model)[len(LMSTUDIO_PREFIX):]
 
     @staticmethod
+    def _ollama_model_id(model: str) -> str:
+        return str(model)[len(OLLAMA_PREFIX):]
+
+    @staticmethod
     def _lmstudio_prompt(prompt: str) -> str:
         """Disable Ornith/Qwen-style hidden reasoning when supported."""
         text = str(prompt or "")
@@ -392,19 +412,35 @@ class MLXClient:
         except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, OSError) as exc:
             return {"available": False, "model_loaded": False, "models": [], "error": str(exc)}
 
+    def check_ollama(self, model: str | None = None, timeout: float = 10.0) -> dict:
+        """Check the local Ollama OpenAI-compatible endpoint and model list."""
+        if model is not None and not self._is_ollama_model(model):
+            return {"available": True, "model_loaded": True, "models": [], "error": ""}
+        requested = self._ollama_model_id(model or self.model)
+        url = f"{ollama_base_url()}/v1/models"
+        try:
+            with urllib.request.urlopen(urllib.request.Request(url, method="GET"), timeout=timeout) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+            models = [str(item.get("id", "")) for item in payload.get("data", []) if isinstance(item, dict)]
+            loaded = not requested or requested in models
+            return {"available": True, "model_loaded": loaded, "models": models, "error": "" if loaded else f"Model not available: {requested}"}
+        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, OSError) as exc:
+            return {"available": False, "model_loaded": False, "models": [], "error": str(exc)}
+
 
     def _generate_openai_http_stream(
         self, base_url: str, api_key: str, model: str,
         prompt: str, system: str | None,
         temperature: float, top_p: float, max_tokens: int,
         label: str = "OpenAI-compatible API",
+        require_api_key: bool = True,
     ) -> Iterable[str]:
         """Yield deltas from any OpenAI-compatible /chat/completions endpoint.
 
         Used for the Nous Inference API harness (NOUS_API_KEY) and reusable
         for any keyed remote endpoint.
         """
-        if not api_key:
+        if require_api_key and not api_key:
             raise RuntimeError(
                 f"{label}: no API key configured. Set NOUS_API_KEY (or the "
                 "relevant key env var) and retry.")
@@ -459,15 +495,17 @@ class MLXClient:
 
         last_error: Exception | None = None
         for attempt in range(1, OPENAI_STREAM_ATTEMPTS + 1):
+            headers = {
+                "Content-Type": "application/json",
+                "Accept": "text/event-stream",
+                # Nous' edge (Cloudflare) rejects default urllib UA (error 1010)
+                "User-Agent": "GravedancerPipeline/1.0",
+            }
+            if api_key:
+                headers["Authorization"] = f"Bearer {api_key}"
             request = urllib.request.Request(
                 url, data=payload,
-                headers={
-                    "Content-Type": "application/json",
-                    "Accept": "text/event-stream",
-                    "Authorization": f"Bearer {api_key}",
-                    # Nous' edge (Cloudflare) rejects default urllib UA (error 1010)
-                    "User-Agent": "GravedancerPipeline/1.0",
-                },
+                headers=headers,
                 method="POST",
             )
             LOGGER.info("using %s model=%s prompt_chars=%s attempt=%s",
@@ -598,6 +636,24 @@ class MLXClient:
                         return
         except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
             raise RuntimeError(f"LM Studio streaming request failed: {exc}") from exc
+
+    def _generate_ollama_stream(
+        self, model: str, prompt: str, system: str | None,
+        temperature: float, top_p: float, max_tokens: int,
+    ) -> Iterable[str]:
+        """Yield OpenAI-compatible streaming deltas from a local Ollama model."""
+        yield from self._generate_openai_http_stream(
+            base_url=ollama_api_url().rsplit("/chat/completions", 1)[0],
+            api_key="",
+            model=self._ollama_model_id(model),
+            prompt=prompt,
+            system=system,
+            temperature=temperature,
+            top_p=top_p,
+            max_tokens=max_tokens,
+            label="Ollama",
+            require_api_key=False,
+        )
 
     def _load_model(self, model_name: str):
         # Instance-level single-slot cache. A class-level lru_cache here made
@@ -892,6 +948,23 @@ class MLXClient:
                     yield chunk
                 LOGGER.info("LM Studio completed model=%s elapsed=%.3fs output_chars=%s",
                             self._lmstudio_model_id(model), time.perf_counter() - start, output_chars)
+                return
+            if self._is_ollama_model(model):
+                health = self.check_ollama(model)
+                if not health["available"]:
+                    raise RuntimeError(
+                        "Ollama is not running. Start Ollama at http://127.0.0.1:11434 and retry."
+                    )
+                if not health["model_loaded"]:
+                    raise RuntimeError(health["error"] or "The selected Ollama model is not available.")
+                start = time.perf_counter()
+                LOGGER.info("using Ollama model=%s max_tokens=%s", self._ollama_model_id(model), max_tokens)
+                output_chars = 0
+                for chunk in self._generate_ollama_stream(model, prompt, system, temperature, top_p, max_tokens):
+                    output_chars += len(chunk)
+                    yield chunk
+                LOGGER.info("Ollama completed model=%s elapsed=%.3fs output_chars=%s",
+                            self._ollama_model_id(model), time.perf_counter() - start, output_chars)
                 return
             if normalized_model == BONSAI_1BIT_MODEL:
                 yield from self._generate_bonsai_stream(

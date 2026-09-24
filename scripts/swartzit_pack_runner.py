@@ -30,8 +30,31 @@ from src.utils.swartzit_package import (  # noqa: E402
 )
 
 
-DEFAULT_MODEL = "mlx-community/gemma-4-e4b-it-OptiQ-4bit"
-DEFAULT_RECAP_MODEL = "mlx-community/gemma-4-e2b-it-OptiQ-4bit"
+_MAC_DEFAULT_MODEL = "mlx-community/gemma-4-e4b-it-OptiQ-4bit"
+_MAC_DEFAULT_RECAP_MODEL = "mlx-community/gemma-4-e2b-it-OptiQ-4bit"
+_LINUX_DEFAULT_MODEL = "ollama:gemma4:e4b"
+
+# Keep the pack portable without changing the Mac-first interactive app. The
+# host can still override every stage through RUNNER_PACK_OPTIONS_JSON, while
+# a source install on Ubuntu naturally selects its local Ollama model.
+def _env_model_default(*names: str, fallback: str) -> str:
+    for name in names:
+        value = os.environ.get(name, "").strip()
+        if value:
+            return value
+    return fallback
+
+
+DEFAULT_MODEL = _env_model_default(
+    "GRAVEDANCER_PACK_DEFAULT_MODEL",
+    "GRAVEDANCER_MODEL",
+    fallback=_LINUX_DEFAULT_MODEL if sys.platform.startswith("linux") else _MAC_DEFAULT_MODEL,
+)
+DEFAULT_RECAP_MODEL = _env_model_default(
+    "GRAVEDANCER_PACK_DEFAULT_RECAP_MODEL",
+    "GRAVEDANCER_MODEL_RECAP",
+    fallback=_LINUX_DEFAULT_MODEL if sys.platform.startswith("linux") else _MAC_DEFAULT_RECAP_MODEL,
+)
 
 
 def emit(frame: dict[str, Any]) -> None:

@@ -1,6 +1,6 @@
 # Gravedancer to General: Anatomy of a Catastrophe
 
-A local, Mac-first creator console for building episodes of a Star Wars fan series chronicling Qymaen jai Sheelal's evolution into General Grievous. Generate stories with **MLX** on Apple Silicon, then build visual workflows for **Draw Things** using **Flux.2 Klein 4b** for stills and **Wan 2.2 High Noise 6-bit SVDQuant** for video prep.
+A local, Mac-first creator console for building episodes of a Star Wars fan series chronicling Qymaen jai Sheelal's evolution into General Grievous. Generate stories with **MLX** on Apple Silicon or **Ollama** on Ubuntu, then build visual workflows for **Draw Things** using **Flux.2 Klein 4b** for stills and **Wan 2.2 High Noise 6-bit SVDQuant** for video prep.
 
 ## Features
 
@@ -33,6 +33,30 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 # Install dependencies
 pip install -r requirements.txt
 ```
+
+### Ubuntu/Ollama source runtime
+
+The interactive Streamlit shell remains Mac-first because the full dependency
+set includes MLX. The Swartzit content-pack adapter is platform-neutral and can
+run from source on Ubuntu with Ollama without installing MLX:
+
+```bash
+cd gravedancer-to-general
+python3 -m venv venv
+source venv/bin/activate
+pip install requests rich fpdf2 ebooklib Pillow
+ollama pull gemma4:e4b
+export GRAVEDANCER_MODEL="ollama:gemma4:e4b"
+python3 scripts/swartzit_pack_runner.py --pack starwars.gravedancer
+```
+
+Ollama must expose its local OpenAI-compatible endpoint at
+`http://127.0.0.1:11434`; set `GRAVEDANCER_OLLAMA_URL` when it is elsewhere.
+The Swartzit adapter defaults to `ollama:gemma4:e4b` on Linux and to the
+existing MLX models on macOS. Set `GRAVEDANCER_PACK_DEFAULT_MODEL` to choose a
+different default. Image generation is optional and remains a separate
+Draw Things or ComfyUI backend; `generate_images: false` is the safe text-only
+first run on Ubuntu.
 
 For repository verification, run:
 
