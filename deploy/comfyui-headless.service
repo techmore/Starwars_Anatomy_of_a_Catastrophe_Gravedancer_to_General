@@ -1,0 +1,15 @@
+[Unit]
+Description=Gravedancer headless ComfyUI image worker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/ComfyUI
+ExecStart=%h/.venvs/gravedancer-comfyui/bin/python %h/ComfyUI/main.py --listen 127.0.0.1 --port 8188 --cpu --disable-auto-launch
+Restart=on-failure
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=default.target

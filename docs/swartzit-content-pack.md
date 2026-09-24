@@ -75,6 +75,20 @@ Example runner options:
 }
 ```
 
+For a persistent SER8 worker, install the included user service after the
+ComfyUI checkout and virtual environment exist:
+
+```bash
+install -D -m 0644 deploy/comfyui-headless.service \
+  ~/.config/systemd/user/gravedancer-comfyui.service
+systemctl --user daemon-reload
+systemctl --user enable --now gravedancer-comfyui.service
+```
+
+The checked-in service deliberately uses `--cpu` because it is the portable
+fallback. If ROCm/PyTorch is later installed and passes the GPU probe, remove
+that one flag in the host service override; the bind remains `127.0.0.1:8188`.
+
 The workflow must be ComfyUI’s API export (node id keys with `class_type` and
 `inputs`), not the regular editor workflow JSON. A different model family or
 custom-node graph can be used by supplying its own API workflow file; the
