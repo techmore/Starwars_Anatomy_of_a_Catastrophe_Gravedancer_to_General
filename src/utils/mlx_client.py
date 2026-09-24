@@ -623,9 +623,18 @@ class MLXClient:
 
     @staticmethod
     def _is_mlx_vlm_model(model_name: str) -> bool:
-        """Qwen3.8 MLX checkpoints use mlx-vlm even for text-only prompts."""
+        """Opt into the VLM loader for Qwen3.8 multimodal requests.
+
+        Qwen3.8 OptiQ checkpoints contain a vision sidecar, but their model
+        card documents stock ``mlx-lm`` for text-only generation.  The client
+        currently exposes text generation only, so routing every Qwen request
+        through ``mlx-vlm.generate`` needlessly adds the VLM wrapper and
+        disables token streaming.  Keep the multimodal path available as an
+        explicit opt-in for future callers that actually provide images.
+        """
         name = str(model_name).lower()
-        return "qwen3.8" in name or "qwen3_8" in name
+        qwen_multimodal = "qwen3.8" in name or "qwen3_8" in name
+        return qwen_multimodal and os.environ.get("GRAVEDANCER_MLX_USE_VLM") == "1"
 
     def _ensure_model_loaded(self, model_name: str):
         """Load one model at a time and explicitly release the prior model."""

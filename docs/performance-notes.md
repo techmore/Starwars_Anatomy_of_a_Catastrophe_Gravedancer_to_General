@@ -74,3 +74,75 @@ streams).
 - `python -m compileall -q app.py run_creative_pipeline.py tui.py scripts src tests`
 - `pytest`: 145 passed / 0 failed
 - Streaming integrity: synthetic 3,000-chunk stream reproduces exact output
+
+---
+
+# Performance Pass — 2026-09-24
+
+This pass focused on the two local 26–27B trial models, model-loader choice,
+cold-start cost, and the context shape of the multi-pass story loop.
+
+## Measured finding & fix
+
+The Qwen3.8 OptiQ checkpoint was being routed through `mlx-vlm.generate` even
+though this application sends text-only prompts. Its model card explicitly
+documents stock `mlx-lm` for text-only use and reserves the VLM/OptiQ path for
+image+text. The VLM call was also non-streaming, so the client could not report
+real decode progress.
+
+The client now uses the normal `mlx-lm` streaming path by default. The VLM
+loader remains available behind `GRAVEDANCER_MLX_USE_VLM=1` for a future caller
+that actually supplies images.
+
+The bounded benchmark now separates cold load from generation:
+
+| Qwen3.8 27B text benchmark | Before | After |
+|---|---:|---:|
+| Cold load from `/Volumes/14tb` | mixed into first-token time | 187.7 s |
+| Generation time (256-token cap) | mixed into one VLM call | 45.3 s |
+| Generation rate | ~1.3 end-to-end estimate | 6.44 approximate tok/s |
+| Streaming | no | yes |
+
+The earlier VLM measurement was not perfectly apples-to-apples because it
+included a different output cap and the loader, but the routing difference is
+large enough to be decisive. The separate direct text-path probe measured
+about 8.3 approximate tok/s after a 169 s load.
+
+## Context audit
+
+The story loop is not replaying the entire prior story into every chapter. It
+passes the current section outline, an 1,800-character prose tail, and a
+recap digest capped at 8,000 characters. The larger avoidable costs are the
+day-boundary recap calls and the 20 visual-prompt calls; both already support
+stage-specific model overrides (`GRAVEDANCER_MODEL_RECAP` and
+`GRAVEDANCER_MODEL_VISUAL`). A small utility model is the preferred next
+experiment for those stages.
+
+## Evaluated, deliberately not changed
+
+- `mlx_lm.load(..., lazy=True)`: a live probe on the NAS-backed Qwen checkpoint
+  deferred work into Metal and ended with a GPU command-buffer timeout. Keep
+  the stable eager load until a local-SSD test shows otherwise.
+- Framework upgrade: the environment already has `mlx-lm 0.31.3` (the current
+  tagged release at audit time), `mlx 0.32.1`, and `mlx-vlm 0.6.15`; no blind
+  dependency bump is justified by this pass.
+- Prompt-cache/server migration: worthwhile if repeated requests or multiple
+  clients become the workload, but it adds a process boundary and needs a
+  quality/timing trial against the current in-process loop.
+- Speculative decoding: `mlx-lm` supports a draft model, but no compatible
+  drafter was installed for this exact Qwen checkpoint. Treat it as a separate
+  experiment, not a silent production change.
+
+## Operational recommendation
+
+Keep archived weights on the NAS, but place the active model on local SSD when
+there is safe free space. The measured ~3-minute cold load is storage-bound;
+this will improve first-run latency without changing prose quality. Keep one
+large model resident per run and use the existing stage overrides for recap
+and visual work.
+
+## Verification
+
+- Full suite: 232 passed (2 deprecation warnings from the MLX bindings).
+- Ruff: clean.
+- `compileall`: clean.

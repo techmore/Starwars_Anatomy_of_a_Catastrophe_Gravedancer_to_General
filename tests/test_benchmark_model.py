@@ -22,6 +22,8 @@ class TestBenchmarkModel(unittest.TestCase):
         self.assertEqual(report["characters"], len("A small test passage."))
         self.assertGreaterEqual(report["approx_tokens"], 1)
         self.assertGreaterEqual(report["total_seconds"], 0)
+        self.assertIsNone(report["load_seconds"])
+        self.assertGreaterEqual(report["generation_seconds"], 0)
 
 
 if __name__ == "__main__":

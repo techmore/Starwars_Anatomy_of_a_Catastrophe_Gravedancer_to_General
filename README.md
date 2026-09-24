@@ -257,9 +257,10 @@ python3 scripts/benchmark_model.py \
   --max-tokens 256
 ```
 
-The report includes first-token latency, total latency, approximate tokens per
-second, and output size. Use the same prompt and token limit when comparing
-LM Studio models.
+The report includes cold-load latency (for in-process MLX), generation-only
+first-token latency, total latency, generation tokens per second, and output
+size. Use the same prompt and token limit when comparing models; end-to-end
+throughput includes storage load time and is reported separately.
 
 The Ornith 1.5 9B LM Studio benchmark measured approximately 8.8 output
 tokens/second in one local run. At that rate, 45,000 output tokens is roughly

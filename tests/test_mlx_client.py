@@ -99,6 +99,21 @@ class TestChatTemplate(unittest.TestCase):
                 client.release_loaded_model()
                 self.assertIsNone(client._loaded_model)
 
+    def test_qwen_text_generation_uses_mlx_lm_by_default(self):
+        self.assertFalse(
+            MLXClient._is_mlx_vlm_model(
+                "mlx-community/Qwen3.8-27B-OptiQ-4bit"
+            )
+        )
+
+    def test_qwen_vlm_path_requires_explicit_opt_in(self):
+        with patch.dict(os.environ, {"GRAVEDANCER_MLX_USE_VLM": "1"}):
+            self.assertTrue(
+                MLXClient._is_mlx_vlm_model(
+                    "mlx-community/Qwen3.8-27B-OptiQ-4bit"
+                )
+            )
+
     def test_switching_models_releases_previous_model_before_load(self):
         client = MLXClient("mlx-community/first")
         loaded = {
