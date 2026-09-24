@@ -56,7 +56,15 @@ The Swartzit adapter defaults to `ollama:gemma4:e4b` on Linux and to the
 existing MLX models on macOS. Set `GRAVEDANCER_PACK_DEFAULT_MODEL` to choose a
 different default. Image generation is optional and remains a separate
 Draw Things or ComfyUI backend; `generate_images: false` is the safe text-only
-first run on Ubuntu.
+first run on Ubuntu. For long-form packs, configure Ollama with a larger
+context window; the included systemd drop-in sets 16K on Linux:
+
+```bash
+sudo install -D -m 0644 deploy/ollama/10-gravedancer-context.conf \
+  /etc/systemd/system/ollama.service.d/10-gravedancer-context.conf
+sudo systemctl daemon-reload
+sudo systemctl restart ollama
+```
 
 For repository verification, run:
 

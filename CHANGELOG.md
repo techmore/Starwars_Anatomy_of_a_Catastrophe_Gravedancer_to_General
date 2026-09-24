@@ -6,6 +6,8 @@
   preserving MLX defaults on macOS.
 - Adds explicit `ollama:<model>` routing, health checks, streaming coverage,
   and source-install guidance for the Swartzit article-unit adapter.
+- Adds the Linux Ollama 16K context drop-in needed to keep multi-day outlines
+  from truncating at the default 4K window.
 
 ## 0.1.0
 
