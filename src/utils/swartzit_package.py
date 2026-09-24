@@ -1,0 +1,137 @@
+"""Generic Swartzit content-package manifests.
+
+The Swartzit host does not import this module. It executes a pack adapter as
+an optional process and consumes the JSONL protocol emitted by that adapter.
+Keeping the manifest builder here makes existing episodes importable without
+regenerating them and gives future packs the same stable output shape.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import re
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+
+CONTENT_PACKAGE_FORMAT = "content-package.v1"
+STARWARS_PACK_ID = "starwars.gravedancer"
+STARWARS_PACK_VERSION = "0.1.0"
+
+_DAY_HEADING = re.compile(r"(?im)^##\s+DAY\s+(\d+)\s*:\s*(.*?)\s*$")
+
+
+def _read_json(path: Path) -> dict[str, Any]:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
+def split_story_days(story: str) -> list[dict[str, Any]]:
+    """Split a generated Markdown story at its canonical day headings."""
+    matches = list(_DAY_HEADING.finditer(story or ""))
+    days: list[dict[str, Any]] = []
+    for index, match in enumerate(matches):
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(story)
+        body = story[match.end():end].strip()
+        days.append({
+            "id": f"day-{int(match.group(1))}",
+            "kind": "article",
+            "order": int(match.group(1)),
+            "title": match.group(2).strip() or f"Day {match.group(1)}",
+            "body": body,
+            "metadata": {"day": int(match.group(1))},
+            "media": [],
+        })
+    return days
+
+
+def _file_entry(path: Path, root: Path) -> dict[str, Any]:
+    data = path.read_bytes()
+    return {
+        "path": str(path),
+        "relative_path": str(path.relative_to(root)),
+        "content_type": "image/png" if path.suffix.lower() == ".png" else "image/*",
+        "bytes": len(data),
+        "sha256": hashlib.sha256(data).hexdigest(),
+    }
+
+
+def episode_to_package(
+    episode_dir: str | Path,
+    *,
+    pack_id: str = STARWARS_PACK_ID,
+    pack_version: str = STARWARS_PACK_VERSION,
+) -> dict[str, Any]:
+    """Convert one completed or imported episode into a content package."""
+    root = Path(episode_dir).expanduser().resolve()
+    metadata = _read_json(root / "metadata.json")
+    if not metadata:
+        raise ValueError(f"Episode metadata is missing or invalid: {root}")
+    story_path = root / "story.md"
+    story = story_path.read_text(encoding="utf-8") if story_path.is_file() else ""
+    units = split_story_days(story)
+    if not units:
+        raise ValueError(f"Episode has no canonical DAY sections: {root}")
+
+    image_files = sorted(path for path in (root / "images").glob("*") if path.is_file()) if (root / "images").is_dir() else []
+    assets = [_file_entry(path, root) for path in image_files]
+    title = str(metadata.get("title") or root.name)
+    episode_id = str(metadata.get("id") or root.name)
+    summary = str(metadata.get("story_arc") or metadata.get("setting") or "").strip()
+    if not summary:
+        summary = f"A {len(units)}-day generated story in the Gravedancer to General series."
+    for unit in units:
+        day_number = int(unit["order"])
+        day_assets = []
+        for asset in assets:
+            match = re.search(r"day-0*(\d+)", Path(asset["relative_path"]).stem.lower())
+            if match and int(match.group(1)) == day_number:
+                day_assets.append(asset)
+        unit["media"] = [
+            {"kind": "image", "path": asset["path"], "alt": f"{title} — {unit['title']}"}
+            for asset in day_assets[:4]
+        ]
+    cover_assets = [
+        asset for asset in assets
+        if "cover" in asset["relative_path"].lower()
+        or "banner" in asset["relative_path"].lower()
+        or re.search(r"day-0+(?:[-_.]|$)", Path(asset["relative_path"]).stem.lower())
+    ]
+    feed_media = [
+        {"kind": "image", "path": asset["path"], "alt": title}
+        for asset in (cover_assets or assets)[:4]
+    ]
+    provenance = {
+        "generator": "gravedancer-to-general",
+        "source_directory": str(root),
+        "created_at": metadata.get("created_at") or datetime.now(timezone.utc).isoformat(),
+        "seed": metadata.get("seed_value"),
+        "model": metadata.get("model_story") or metadata.get("model"),
+        "pipeline_complete": bool(metadata.get("pipeline_complete")),
+    }
+    return {
+        "format": CONTENT_PACKAGE_FORMAT,
+        "id": episode_id,
+        "kind": "series",
+        "title": title,
+        "summary": summary,
+        "pack": {"id": pack_id, "version": pack_version, "name": "Gravedancer to General"},
+        "feed_item": {
+            "title": title,
+            "body": summary,
+            "media": feed_media,
+            "attribution": "Generated by the optional Gravedancer to General content pack.",
+        },
+        "units": units,
+        "assets": assets,
+        "provenance": provenance,
+    }
+
+
+def package_from_episode_id(storage_path: str | Path, episode_id: str) -> dict[str, Any]:
+    return episode_to_package(Path(storage_path).expanduser() / episode_id)

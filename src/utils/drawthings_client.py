@@ -20,6 +20,7 @@ Design notes:
 """
 
 import base64
+import json
 import os
 import shutil
 import subprocess
@@ -370,7 +371,7 @@ class DrawThingsCliClient:
         extra: dict[str, Any] | None = None,
     ) -> bytes:
         """Generate a PNG through the local CLI and return its bytes."""
-        del sampler, extra  # CLI resolves sampler/settings from model recommendations.
+        del sampler  # CLI resolves sampler/settings from model recommendations.
         with tempfile.TemporaryDirectory(prefix="gravedancer-drawthings-") as directory:
             output_path = Path(directory) / "generated.png"
             args = [
@@ -391,8 +392,18 @@ class DrawThingsCliClient:
                 "--disable-preview",
                 "--output",
                 str(output_path),
-                *self._offline_args(),
             ]
+            loras: Any = extra.get("loras") if isinstance(extra, dict) else None
+            if loras is None:
+                raw_loras = os.environ.get("GRAVEDANCER_DT_CLI_LORAS_JSON", "").strip()
+                if raw_loras:
+                    try:
+                        loras = json.loads(raw_loras)
+                    except json.JSONDecodeError as exc:
+                        raise RuntimeError("GRAVEDANCER_DT_CLI_LORAS_JSON is invalid") from exc
+            if isinstance(loras, list) and loras:
+                args.extend(["--config-json", json.dumps({"loras": loras}, separators=(",", ":"))])
+            args.extend(self._offline_args())
             if negative_prompt:
                 args.extend([
                     "--negative-prompt-file",

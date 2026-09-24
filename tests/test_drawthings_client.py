@@ -1,4 +1,5 @@
 import base64
+import json
 import os
 import unittest
 from pathlib import Path
@@ -109,6 +110,27 @@ class TestDrawThingsCliClient(unittest.TestCase):
         self.assertIn("--negative-prompt-file", args)
         self.assertIn("--disable-preview", args)
         self.assertIn("--no-download-missing", args)
+
+    def test_cli_generation_passes_lora_configuration(self):
+        png_bytes = b"\x89PNG\r\n\x1a\ncli-lora"
+        client = DrawThingsCliClient(model="flux_1_schnell_q5p.ckpt")
+
+        def fake_run(args, timeout=900):
+            del timeout
+            output_path = Path(args[args.index("--output") + 1])
+            output_path.write_bytes(png_bytes)
+            return Mock(stdout="", stderr="")
+
+        with patch.object(client, "_run", side_effect=fake_run) as run:
+            client.generate_image(
+                prompt="A starship over a desert",
+                extra={"loras": [{"file": "armor.safetensors", "weight": 0.65}]},
+            )
+
+        args = run.call_args.args[0]
+        config = json.loads(args[args.index("--config-json") + 1])
+        self.assertEqual(config["loras"][0]["file"], "armor.safetensors")
+        self.assertEqual(config["loras"][0]["weight"], 0.65)
 
     def test_backend_selection_can_use_cli_without_an_api_server(self):
         with patch.dict(os.environ, {"GRAVEDANCER_DT_BACKEND": "cli"}):

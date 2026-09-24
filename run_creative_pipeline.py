@@ -9,6 +9,7 @@ by the LLM into a full episode with outline → story → banner → chapter pro
 
 import argparse
 import atexit
+import json
 import os
 import signal
 import sys
@@ -55,6 +56,13 @@ LOGGER = get_logger(__name__)
 
 # Default creative seed that the user picked: "The Ashen Chain".
 DEFAULT_SEED_VALUE = 42
+
+
+def _emit_swartzit_event(event: dict[str, Any]) -> None:
+    """Emit a machine-readable frame only when launched by the pack adapter."""
+    if os.environ.get("SWARTZIT_RUNNER_PROTOCOL", "").strip().lower() != "jsonl":
+        return
+    print(json.dumps(event, ensure_ascii=False, separators=(",", ":")), flush=True)
 
 
 def _map_seed_to_metadata(seed: dict[str, Any]) -> dict[str, Any]:
@@ -114,6 +122,11 @@ def main(
     image_mode: str = "day",
     max_images: int | None = None,
     generate_refs: bool = False,
+    num_days: int | None = None,
+    image_width: int = 1024,
+    image_height: int = 576,
+    image_steps: int = 5,
+    image_cfg: float = 1.4,
 ):
     _install_cancel_handler()
     console = Console() if RICH_AVAILABLE else None
@@ -134,6 +147,10 @@ def main(
     print("=" * 72 + "\n")
 
     seed = generate_creative_seed(seed=seed_value)
+    if num_days is not None:
+        if not 3 <= int(num_days) <= 8:
+            raise ValueError("num_days must be between 3 and 8")
+        seed["num_days"] = int(num_days)
     print(f"CREATIVE SEED (value={seed['seed']})")
     print("-" * 40)
     print(f"  Title:  {seed['title']}")
@@ -205,6 +222,18 @@ def main(
         )
         print(f"  [checkpoint] Day {day_number} saved ({len(day_drafts)}/{seed['num_days']} days)", flush=True)
         LOGGER.info("Story checkpoint saved path=%s day=%s", path, day_number)
+        _emit_swartzit_event({
+            "type": "checkpoint",
+            "phase": "day-checkpoint",
+            "message": f"Day {day_number} checkpoint saved",
+            "checkpoint": {
+                "kind": "day",
+                "day": day_number,
+                "completed_days": len(day_drafts),
+                "total_days": seed["num_days"],
+                "title": seed["title"],
+            },
+        })
 
     jedi_details = {
         "name": seed["jedi_name"],
@@ -271,7 +300,7 @@ def main(
     print(f"{'='*72}\n")
     story_start = time.perf_counter()
 
-    last_progress = {"value": None, "started": 0.0, "last_update": 0.0}
+    last_progress = {"value": None, "started": 0.0, "last_update": 0.0, "last_event": 0.0}
 
     def progress_callback(stage: str, message: str, text: str = ""):
         """Print phase changes and a compact live token meter."""
@@ -301,6 +330,24 @@ def main(
             flush=True,
         )
         last_progress["last_update"] = now
+        if now - last_progress["last_event"] >= 2.0 or progress_key != last_progress.get("event_key"):
+            percent = 5
+            if stage.startswith("day-"):
+                try:
+                    current_day = int(stage.split("-", 2)[1])
+                    percent = 10 + round(70 * max(0, current_day - 1) / max(seed["num_days"], 1))
+                except (ValueError, IndexError):
+                    percent = 10
+            elif stage in {"recap", "extract", "chapters"}:
+                percent = 82
+            _emit_swartzit_event({
+                "type": "progress",
+                "phase": stage,
+                "message": message,
+                "percent": percent,
+            })
+            last_progress["last_event"] = now
+            last_progress["event_key"] = progress_key
 
     try:
         story, story_timings = story_gen.generate_episode_story_multi_pass(
@@ -333,6 +380,7 @@ def main(
         print(f"\n⚠ Generation cancelled: {exc}")
         print(f"  Checkpoint preserved under {storage.base_path / '.checkpoints'}")
         print(f"  Rerun with --seed {seed_value} to resume from the last completed day.")
+        _emit_swartzit_event({"type": "cancelled", "message": str(exc)})
         mlx.release_loaded_model()
         return None
     metadata["model_story"] = model_story
@@ -550,6 +598,10 @@ def main(
                 metadata=metadata,
                 mode=image_mode,
                 max_images=max_images,
+                width=image_width,
+                height=image_height,
+                steps=image_steps,
+                cfg=image_cfg,
                 progress=_img_progress,
             )
             ok = sum(1 for r in results if "error" not in r)
@@ -653,6 +705,10 @@ if __name__ == "__main__":
         help=f"Random seed for the creative tables (default: {DEFAULT_SEED_VALUE})",
     )
     parser.add_argument(
+        "--days", type=int, default=None, choices=range(3, 9),
+        help="Override the generated episode length (3-8 days).",
+    )
+    parser.add_argument(
         "--fast", action="store_true", default=False,
         help="Fast mode: ~40%% of the normal word budget per day "
              "(GRAVEDANCER_FAST=1). Roughly 2.5x faster story phase.",
@@ -719,6 +775,7 @@ if __name__ == "__main__":
         image_mode=args.image_mode or ("chapter" if args.chapters else "day"),
         max_images=args.max_images,
         generate_refs=args.refs or args.chapters,
+        num_days=args.days,
     )
     except GenerationCancelled as exc:
         print(f"\n⚠ Cancelled before a checkpoint existed: {exc}")
