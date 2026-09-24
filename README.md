@@ -139,6 +139,23 @@ The app is organized as a modular prototype UI shell with separate tabs for stor
 
 ## Draw Things Workflow
 
+The app supports both the Draw Things API server and the installed
+`draw-things-cli`. The API remains the default. To render locally without
+leaving the Draw Things API server running:
+
+```bash
+export GRAVEDANCER_DT_BACKEND=cli
+export GRAVEDANCER_DT_CLI_MODEL="flux_2_klein_9b_i8x.ckpt"
+draw-things-cli models list --downloaded-only
+```
+
+The CLI backend uses prompt files, writes a temporary PNG/MP4, and returns the
+bytes through the same image-generation interface as the API client. It is
+offline/no-download by default; set `GRAVEDANCER_DT_CLI_ALLOW_DOWNLOADS=1` if
+you explicitly want the CLI to fetch missing model files. Override the binary
+with `GRAVEDANCER_DT_CLI_BIN` and the model directory with
+`DRAWTHINGS_MODELS_DIR`.
+
 ### Image Generation (Flux.2 Klein 4b)
 
 1. Open **Draw Things**

@@ -1,4 +1,4 @@
-"""Draw Things local API client.
+"""Draw Things API and local-CLI clients.
 
 Draw Things exposes an Automatic1111-compatible HTTP server when you enable
 its API Server (Draw Things → Settings → API Server). We talk to it via the
@@ -13,17 +13,24 @@ Design notes:
   - Video (Wan I2V) responses are less standardised; ``generate_video`` returns
     a dict that may contain ``video_bytes`` or ``error`` so callers can fall
     back to a manual paste workflow.
-  - Port auto-probing happens in the sidebar UI; this client just talks to
+  - Port auto-probing happens in the sidebar UI; the API client just talks to
     whatever base_url it's given.
+  - Set ``GRAVEDANCER_DT_BACKEND=cli`` to use the installed
+    ``draw-things-cli`` binary without a running API server.
 """
 
 import base64
 import os
+import shutil
+import subprocess
+import tempfile
 import time
+from pathlib import Path
 from typing import Any
 
 # Ports Draw Things is known to use. Sidebar probes these in order.
 DEFAULT_DT_PORTS: tuple[int, ...] = (7860, 7859, 7001)
+DEFAULT_DT_CLI_MODEL = "flux_2_klein_9b_i8x.ckpt"
 
 
 def _requests():
@@ -33,6 +40,8 @@ def _requests():
 
 
 class DrawThingsClient:
+    backend = "api"
+
     def __init__(self, base_url: str = "http://localhost:7860"):
         self.base_url = base_url.rstrip("/")
         self.api_root = f"{self.base_url}/sdapi/v1"
@@ -237,8 +246,225 @@ class DrawThingsClient:
             return {"fallback": True, "info": f"Video generation call failed: {e}", "raw": {}}
 
 
-def get_drawthings_client(base_url: str | None = None) -> DrawThingsClient:
-    """Create a Draw Things client, auto-detecting the active port if needed."""
+class DrawThingsCliClient:
+    """Draw Things client backed by the installed ``draw-things-cli`` binary.
+
+    The CLI writes media to a path instead of returning A1111-compatible
+    base64 JSON, so this adapter keeps the same byte-oriented interface used
+    by the image phase while avoiding a running Draw Things API server.
+    """
+
+    backend = "cli"
+
+    def __init__(
+        self,
+        model: str | None = None,
+        binary: str | None = None,
+        models_dir: str | None = None,
+    ):
+        self.binary = (
+            binary
+            or os.environ.get("GRAVEDANCER_DT_CLI_BIN", "draw-things-cli").strip()
+            or "draw-things-cli"
+        )
+        self.model = (
+            model
+            or os.environ.get("GRAVEDANCER_DT_CLI_MODEL", DEFAULT_DT_CLI_MODEL).strip()
+            or DEFAULT_DT_CLI_MODEL
+        )
+        self.models_dir = models_dir or os.environ.get("DRAWTHINGS_MODELS_DIR", "").strip()
+
+    def _command_available(self) -> bool:
+        return bool(shutil.which(self.binary) or Path(self.binary).is_file())
+
+    def _run(self, args: list[str], timeout: int = 900) -> subprocess.CompletedProcess[str]:
+        if not self._command_available():
+            raise RuntimeError(
+                f"Draw Things CLI not found: {self.binary}. "
+                "Set GRAVEDANCER_DT_CLI_BIN or install draw-things-cli."
+            )
+        try:
+            return subprocess.run(
+                [self.binary, *args],
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError(f"Draw Things CLI timed out after {timeout}s") from exc
+        except subprocess.CalledProcessError as exc:
+            detail = (exc.stderr or exc.stdout or "").strip()
+            raise RuntimeError(
+                f"Draw Things CLI failed (exit {exc.returncode})"
+                + (f": {detail[-2000:]}" if detail else "")
+            ) from exc
+
+    def _model_args(self) -> list[str]:
+        args = ["--model", self.model]
+        if self.models_dir:
+            args.extend(["--models-dir", self.models_dir])
+        return args
+
+    def _offline_args(self) -> list[str]:
+        if os.environ.get("GRAVEDANCER_DT_CLI_ALLOW_DOWNLOADS") == "1":
+            return []
+        return ["--offline", "--no-download-missing"]
+
+    def check_connection(self) -> bool:
+        """Return whether the CLI binary is available without spawning it."""
+        return self._command_available()
+
+    def get_options(self) -> dict[str, Any]:
+        return {"backend": self.backend, "model": self.model, "binary": self.binary}
+
+    def current_model_name(self) -> str:
+        return self.model
+
+    def list_models(self) -> list[str]:
+        """Return downloaded model file ids reported by the CLI."""
+        try:
+            result = self._run(
+                ["models", "list", "--downloaded-only", "--offline"]
+                + (["--models-dir", self.models_dir] if self.models_dir else []),
+                timeout=30,
+            )
+        except Exception:
+            return []
+        models: list[str] = []
+        for line in result.stdout.splitlines():
+            stripped = line.strip()
+            if not stripped or stripped.startswith(("Models directory:", "MODEL ")):
+                continue
+            model_id = stripped.split()[0]
+            if model_id.endswith((".ckpt", ".safetensors")):
+                models.append(model_id)
+        return models
+
+    def switch_model(self, name_hint: str) -> bool:
+        """Switch the model used by subsequent CLI calls in this client."""
+        match = next(
+            (model for model in self.list_models() if name_hint.lower() in model.lower()),
+            None,
+        )
+        if not match:
+            return False
+        self.model = match
+        return True
+
+    def _write_prompt_file(self, directory: str, name: str, text: str) -> str:
+        path = Path(directory) / name
+        path.write_text(text or "", encoding="utf-8")
+        return str(path)
+
+    def generate_image(
+        self,
+        prompt: str,
+        negative_prompt: str = "",
+        width: int = 1024,
+        height: int = 576,
+        steps: int = 5,
+        cfg: float = 1.4,
+        sampler: str = "DDIM Trailing",
+        seed: int = -1,
+        extra: dict[str, Any] | None = None,
+    ) -> bytes:
+        """Generate a PNG through the local CLI and return its bytes."""
+        del sampler, extra  # CLI resolves sampler/settings from model recommendations.
+        with tempfile.TemporaryDirectory(prefix="gravedancer-drawthings-") as directory:
+            output_path = Path(directory) / "generated.png"
+            args = [
+                "generate",
+                *self._model_args(),
+                "--prompt-file",
+                self._write_prompt_file(directory, "prompt.txt", prompt),
+                "--width",
+                str(width),
+                "--height",
+                str(height),
+                "--steps",
+                str(steps),
+                "--cfg",
+                str(cfg),
+                "--seed",
+                str(seed),
+                "--disable-preview",
+                "--output",
+                str(output_path),
+                *self._offline_args(),
+            ]
+            if negative_prompt:
+                args.extend([
+                    "--negative-prompt-file",
+                    self._write_prompt_file(directory, "negative-prompt.txt", negative_prompt),
+                ])
+            self._run(args)
+            if not output_path.is_file():
+                raise RuntimeError("Draw Things CLI completed without writing a PNG")
+            return output_path.read_bytes()
+
+    def generate_video(
+        self,
+        init_image_bytes: bytes,
+        prompt: str,
+        negative_prompt: str = "",
+        width: int = 832,
+        height: int = 480,
+        steps: int = 25,
+        cfg: float = 7.0,
+        seed: int = -1,
+        sampler: str = "Euler",
+        extra: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Generate an MP4 through the CLI, when a video model is configured."""
+        del sampler, extra
+        video_model = os.environ.get("GRAVEDANCER_DT_CLI_VIDEO_MODEL", self.model).strip() or self.model
+        frames = os.environ.get("GRAVEDANCER_DT_CLI_FRAMES", "49")
+        with tempfile.TemporaryDirectory(prefix="gravedancer-drawthings-") as directory:
+            init_path = Path(directory) / "init.png"
+            output_path = Path(directory) / "generated.mp4"
+            init_path.write_bytes(init_image_bytes)
+            args = [
+                "generate",
+                "--model",
+                video_model,
+                "--prompt-file",
+                self._write_prompt_file(directory, "prompt.txt", prompt),
+                "--negative-prompt-file",
+                self._write_prompt_file(directory, "negative-prompt.txt", negative_prompt),
+                "--image",
+                str(init_path),
+                "--width",
+                str(width),
+                "--height",
+                str(height),
+                "--frames",
+                str(frames),
+                "--steps",
+                str(steps),
+                "--cfg",
+                str(cfg),
+                "--seed",
+                str(seed),
+                "--disable-preview",
+                "--output",
+                str(output_path),
+                *self._offline_args(),
+            ]
+            try:
+                self._run(args, timeout=1800)
+                if not output_path.is_file():
+                    return {"fallback": True, "info": "Draw Things CLI completed without writing a video."}
+                return {"video_bytes": output_path.read_bytes(), "raw": {}}
+            except Exception as exc:
+                return {"fallback": True, "info": f"Draw Things CLI video generation failed: {exc}", "raw": {}}
+
+
+def get_drawthings_client(base_url: str | None = None) -> DrawThingsClient | DrawThingsCliClient:
+    """Create an API or CLI client, selected by ``GRAVEDANCER_DT_BACKEND``."""
+    backend = os.environ.get("GRAVEDANCER_DT_BACKEND", "api").strip().lower()
+    if backend in {"cli", "local-cli", "draw-things-cli"} or str(base_url or "").strip().lower() in {"cli", "draw-things-cli"}:
+        return DrawThingsCliClient()
     if base_url:
         return DrawThingsClient(base_url)
     env_url = os.environ.get("GRAVEDANCER_DT_URL", "").strip()

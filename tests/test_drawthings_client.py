@@ -1,8 +1,10 @@
 import base64
+import os
 import unittest
+from pathlib import Path
 from unittest.mock import Mock, patch
 
-from src.utils.drawthings_client import DrawThingsClient
+from src.utils.drawthings_client import DrawThingsCliClient, DrawThingsClient, get_drawthings_client
 
 
 class TestDrawThingsClient(unittest.TestCase):
@@ -70,3 +72,45 @@ class TestDrawThingsClient(unittest.TestCase):
 
         self.assertTrue(out["fallback"])
         self.assertIn("No video bytes", out["info"])
+
+
+class TestDrawThingsCliClient(unittest.TestCase):
+    def test_cli_reports_installed_binary_without_starting_generation(self):
+        client = DrawThingsCliClient(binary="draw-things-cli")
+        with patch("src.utils.drawthings_client.shutil.which", return_value="/usr/local/bin/draw-things-cli"):
+            self.assertTrue(client.check_connection())
+
+    def test_cli_generation_reads_png_written_to_output_path(self):
+        png_bytes = b"\x89PNG\r\n\x1a\ncli-png"
+        client = DrawThingsCliClient(model="flux_1_schnell_q5p.ckpt")
+
+        def fake_run(args, timeout=900):
+            del timeout
+            output_path = Path(args[args.index("--output") + 1])
+            output_path.write_bytes(png_bytes)
+            return Mock(stdout="", stderr="")
+
+        with patch.object(client, "_run", side_effect=fake_run) as run:
+            self.assertEqual(
+                client.generate_image(
+                    prompt="A lighthouse",
+                    negative_prompt="text",
+                    width=1024,
+                    height=1024,
+                    steps=4,
+                    seed=42,
+                ),
+                png_bytes,
+            )
+
+        args = run.call_args.args[0]
+        self.assertEqual(args[:3], ["generate", "--model", "flux_1_schnell_q5p.ckpt"])
+        self.assertIn("--prompt-file", args)
+        self.assertIn("--negative-prompt-file", args)
+        self.assertIn("--disable-preview", args)
+        self.assertIn("--no-download-missing", args)
+
+    def test_backend_selection_can_use_cli_without_an_api_server(self):
+        with patch.dict(os.environ, {"GRAVEDANCER_DT_BACKEND": "cli"}):
+            client = get_drawthings_client("http://localhost:7860")
+        self.assertIsInstance(client, DrawThingsCliClient)

@@ -14,6 +14,7 @@ python3 scripts/benchmark_model.py --model "lmstudio:ornith-1.5-9b-mlx" --max-to
 
 - Story generation prompt structure and parsing
 - Draw Things client fallback behavior
+- Draw Things API and local-CLI client behavior
 - Episode storage normalization and archive output
 - Storage path-safety, atomic writes, and malformed-file recovery
 - Per-session state isolation and saved-episode loading
