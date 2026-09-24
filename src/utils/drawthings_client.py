@@ -17,6 +17,8 @@ Design notes:
     whatever base_url it's given.
   - Set ``GRAVEDANCER_DT_BACKEND=cli`` to use the installed
     ``draw-things-cli`` binary without a running API server.
+  - Set ``GRAVEDANCER_DT_BACKEND=comfyui`` to use a headless ComfyUI server
+    with an API-format workflow and the same byte-oriented image interface.
 """
 
 import base64
@@ -471,9 +473,24 @@ class DrawThingsCliClient:
                 return {"fallback": True, "info": f"Draw Things CLI video generation failed: {exc}", "raw": {}}
 
 
-def get_drawthings_client(base_url: str | None = None) -> DrawThingsClient | DrawThingsCliClient:
-    """Create an API or CLI client, selected by ``GRAVEDANCER_DT_BACKEND``."""
+def get_drawthings_client(
+    base_url: str | None = None,
+) -> DrawThingsClient | DrawThingsCliClient:
+    """Create a Draw Things API, Draw Things CLI, or ComfyUI client."""
     backend = os.environ.get("GRAVEDANCER_DT_BACKEND", "api").strip().lower()
+    if backend in {"comfy", "comfyui", "comfy-ui"} or str(base_url or "").strip().lower() in {
+        "comfy",
+        "comfyui",
+        "comfy-ui",
+    }:
+        from src.utils.comfyui_client import ComfyUIClient
+
+        candidate_url = base_url if str(base_url or "").strip().lower() not in {
+            "comfy",
+            "comfyui",
+            "comfy-ui",
+        } else None
+        return ComfyUIClient(candidate_url)
     if backend in {"cli", "local-cli", "draw-things-cli"} or str(base_url or "").strip().lower() in {"cli", "draw-things-cli"}:
         return DrawThingsCliClient()
     if base_url:

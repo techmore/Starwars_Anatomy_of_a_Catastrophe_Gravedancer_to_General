@@ -78,6 +78,20 @@ def _set_optional_draw_things_environment(options: dict[str, Any]) -> None:
         value = str(draw.get(key) or "").strip()
         if value:
             os.environ[env_name] = value
+    backend = os.environ["GRAVEDANCER_DT_BACKEND"].strip().lower()
+    if backend in {"comfy", "comfyui", "comfy-ui"}:
+        for key, env_name in (
+            ("url", "GRAVEDANCER_COMFYUI_URL"),
+            ("workflow", "GRAVEDANCER_COMFYUI_WORKFLOW_JSON"),
+            ("model", "GRAVEDANCER_COMFYUI_MODEL"),
+            ("timeout", "GRAVEDANCER_COMFYUI_TIMEOUT"),
+        ):
+            raw_value = draw.get(key)
+            if key == "url" and not raw_value:
+                raw_value = draw.get("base_url")
+            value = str(raw_value or "").strip()
+            if value:
+                os.environ[env_name] = value
     loras = draw.get("loras")
     if isinstance(loras, list):
         os.environ["GRAVEDANCER_DT_CLI_LORAS_JSON"] = json.dumps(loras)
