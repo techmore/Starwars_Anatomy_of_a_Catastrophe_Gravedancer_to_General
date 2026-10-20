@@ -1,8 +1,14 @@
-streamlit>=1.58.0
-requests>=2.31.0
+# Floors track the latest releases that still support Python 3.10
+# (pyproject ruff target-version = py310). streamlit 1.66+ and Pillow 13+
+# require Python >= 3.11, so pip resolves newer releases only on 3.11+.
+streamlit>=1.65.0
+requests>=2.34.2
 mlx-lm @ git+https://github.com/ml-explore/mlx-lm.git
 mlx-optiq
-rich>=14.0.0
-textual>=8.0.0
+rich>=15.0.0
+textual>=8.2.8
 ebooklib>=0.20
-fpdf2>=2.8
+fpdf2>=2.8.9
+# Previously undeclared runtime imports (scripts/publish_episode.py, export/cover utils).
+PyYAML>=6.0.3
+Pillow>=12.3.0
